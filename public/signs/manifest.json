@@ -1,0 +1,68 @@
+{
+  "signs": [
+    {
+      "word": "alright",
+      "duration": 2.7666666666666666,
+      "frames": 84,
+      "file": "/signs/sign_alright.json",
+      "take": "MVI_0038.parquet"
+    },
+    {
+      "word": "goodafternoon",
+      "duration": 3,
+      "frames": 91,
+      "file": "/signs/sign_goodafternoon.json",
+      "take": "MVI_0046.parquet"
+    },
+    {
+      "word": "goodevening",
+      "duration": 3.1333333333333333,
+      "frames": 95,
+      "file": "/signs/sign_goodevening.json",
+      "take": "MVI_005_4 (3).parquet"
+    },
+    {
+      "word": "goodmorning",
+      "duration": 2.966666666666667,
+      "frames": 90,
+      "file": "/signs/sign_goodmorning.json",
+      "take": "MVI_0045.parquet"
+    },
+    {
+      "word": "goodnight",
+      "duration": 3.066666666666667,
+      "frames": 93,
+      "file": "/signs/sign_goodnight.json",
+      "take": "MVI_0059.parquet"
+    },
+    {
+      "word": "hello",
+      "duration": 2.7666666666666666,
+      "frames": 84,
+      "file": "/signs/sign_hello.json",
+      "take": "MVI_9955.parquet"
+    },
+    {
+      "word": "howareyou",
+      "duration": 3.1,
+      "frames": 94,
+      "file": "/signs/sign_howareyou.json",
+      "take": "MVI_9962.parquet"
+    },
+    {
+      "word": "pleased",
+      "duration": 2.8666666666666667,
+      "frames": 87,
+      "file": "/signs/sign_pleased.json",
+      "take": "MVI_0068.parquet"
+    },
+    {
+      "word": "thankyou",
+      "duration": 2.8333333333333335,
+      "frames": 86,
+      "file": "/signs/sign_thankyou.json",
+      "take": "MVI_0063.parquet"
+    }
+  ],
+  "updatedAt": "2026-08-22T16:14:23.233Z"
+}

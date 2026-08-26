@@ -39,11 +39,11 @@ export const Navbar: React.FC = () => {
           <Link href="/#how-it-works" className="hover:text-orange-400 transition">
             How It Works
           </Link>
-          <Link href="/#faq" className="hover:text-orange-400 transition">
-            Help
+          <Link href="/test-avatar" className="text-orange-400 hover:text-orange-300 font-extrabold transition flex items-center gap-1">
+            <span>3D Sign Studio</span>
           </Link>
           {user && (
-            <Link href="/dashboard" className="text-orange-400 font-extrabold hover:text-orange-300 transition">
+            <Link href="/dashboard" className="hover:text-orange-400 transition">
               Dashboard
             </Link>
           )}

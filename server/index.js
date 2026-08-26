@@ -49,6 +49,45 @@ nextApp.prepare().then(() => {
       return;
     }
 
+    if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/model/')) {
+      const rel = parsedUrl.pathname.replace(/^\/model\//, '');
+      const fs = require('fs');
+      const path = require('path');
+      const p1 = path.join(__dirname, '..', 'public', 'model', rel);
+      const p2 = path.join(__dirname, '..', 'model', rel);
+      const p3 = 'C:/Users/User/Downloads/passive_marker_man.fbx';
+      const p4 = path.join('C:/Users/User/Downloads', rel);
+
+      let target = null;
+      if (fs.existsSync(p1)) target = p1;
+      else if (fs.existsSync(p2)) target = p2;
+      else if ((rel === 'mans.fbx' || rel === 'passive_marker_man.fbx') && fs.existsSync(p3)) target = p3;
+      else if (fs.existsSync(p4)) target = p4;
+
+      if (target) {
+        // Auto-copy to public/model/mans.fbx if from downloads
+        if (target === p3) {
+          try {
+            const destDir = path.join(__dirname, '..', 'public', 'model');
+            if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+            const dest = path.join(destDir, 'mans.fbx');
+            if (!fs.existsSync(dest) || fs.statSync(dest).size !== fs.statSync(p3).size) {
+              fs.copyFileSync(p3, dest);
+              console.log(`[Auto-Sync] Copied passive_marker_man.fbx -> public/model/mans.fbx (${(fs.statSync(dest).size / 1024 / 1024).toFixed(2)} MB)`);
+            }
+          } catch (e) {
+            console.error('[Auto-Sync Error]', e);
+          }
+        }
+
+        const ext = path.extname(target).toLowerCase();
+        const mime = ext === '.fbx' ? 'application/octet-stream' : (ext === '.glb' ? 'model/gltf-binary' : 'application/octet-stream');
+        res.setHeader('Content-Type', mime);
+        fs.createReadStream(target).pipe(res);
+        return;
+      }
+    }
+
     await handle(req, res, parsedUrl);
   });
 

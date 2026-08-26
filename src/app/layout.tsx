@@ -35,7 +35,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${plusJakartaSans.variable} ${inter.variable} ${dancingScript.variable}`}>
+    <html lang="en" data-scroll-behavior="smooth" className={`${plusJakartaSans.variable} ${inter.variable} ${dancingScript.variable}`}>
       <body className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans antialiased">
         <AuthProvider>
           {children}

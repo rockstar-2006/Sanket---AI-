@@ -97,16 +97,20 @@ export async function getUserMeetingHistory(hostUid: string): Promise<MeetingSes
   try {
     const q = query(
       collection(db, "meetings"), 
-      where("hostUid", "==", hostUid),
-      orderBy("createdAt", "desc")
+      where("hostUid", "==", hostUid)
     );
     const snap = await getDocs(q);
-    return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as MeetingSession));
+    const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as MeetingSession));
+
+    // Sort in-memory by createdAt desc to avoid composite index requirements & delays
+    return docs.sort((a, b) => {
+      const timeA = (a.createdAt as any)?.seconds || 0;
+      const timeB = (b.createdAt as any)?.seconds || 0;
+      return timeB - timeA;
+    });
   } catch (err) {
-    console.warn("Firestore query fallback without index:", err);
-    const fallbackQ = query(collection(db, "meetings"), where("hostUid", "==", hostUid));
-    const snap = await getDocs(fallbackQ);
-    return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as MeetingSession));
+    console.error("Error in getUserMeetingHistory:", err);
+    return [];
   }
 }
 

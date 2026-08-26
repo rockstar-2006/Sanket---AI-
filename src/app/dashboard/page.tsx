@@ -106,28 +106,36 @@ export default function DashboardPage() {
               </p>
 
               {/* Action Buttons */}
-              <div className="pt-2 flex flex-col sm:flex-row items-center gap-4">
+              <div className="pt-2 flex flex-wrap items-center gap-3">
                 <Link
                   href="/consultation/create"
-                  className="w-full sm:w-auto px-8 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-lg shadow-blue-600/25 transition flex items-center justify-center gap-2"
+                  className="w-full sm:w-auto px-7 py-3.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-lg shadow-blue-600/25 transition flex items-center justify-center gap-2"
                 >
-                  <PlusCircle className="w-5 h-5" />
-                  <span>Start Free Call</span>
+                  <PlusCircle className="w-4 h-4" />
+                  <span>Start Video Call</span>
                 </Link>
 
-                <form onSubmit={handleJoinByCode} className="w-full sm:w-auto flex items-center bg-white border border-slate-300 rounded-full p-1.5 shadow-sm">
+                <Link
+                  href="/test-avatar"
+                  className="w-full sm:w-auto px-6 py-3.5 rounded-full bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm shadow-lg shadow-orange-500/25 transition flex items-center justify-center gap-2"
+                >
+                  <Bot className="w-4 h-4" />
+                  <span>3D Sign Studio (Test)</span>
+                </Link>
+
+                <form onSubmit={handleJoinByCode} className="w-full sm:w-auto flex items-center bg-white border border-slate-300 rounded-full p-1 shadow-sm">
                   <input
                     type="text"
                     placeholder="ROOM CODE"
                     value={roomInput}
                     onChange={(e) => setRoomInput(e.target.value)}
-                    className="px-4 py-2 text-xs font-mono font-bold uppercase text-slate-900 placeholder-slate-400 bg-transparent focus:outline-none w-36"
+                    className="px-4 py-2 text-xs font-mono font-bold uppercase text-slate-900 placeholder-slate-400 bg-transparent focus:outline-none w-32"
                   />
                   <button
                     type="submit"
-                    className="px-5 py-2.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition shadow-xs"
+                    className="px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition shadow-xs"
                   >
-                    Join Room
+                    Join
                   </button>
                 </form>
               </div>

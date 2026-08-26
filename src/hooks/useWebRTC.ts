@@ -303,6 +303,17 @@ export function useWebRTC({
     return () => {
       isMounted = false;
       if (room) {
+        try {
+          // Stop all local tracks explicitly to turn off camera and mic immediately
+          room.localParticipant.videoTrackPublications.forEach((pub) => {
+            if (pub.track) pub.track.stop();
+          });
+          room.localParticipant.audioTrackPublications.forEach((pub) => {
+            if (pub.track) pub.track.stop();
+          });
+        } catch (e) {
+          console.warn("[LiveKit] Non-critical error stopping tracks on hook cleanup:", e);
+        }
         room.disconnect();
       }
     };
