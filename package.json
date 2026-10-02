@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node server/index.js --dev",
     "build": "next build",
-    "start": "next start -p 3005",
+    "start": "next start",
     "lint": "next lint",
     "server": "node server/index.js",
     "dev:all": "npm run dev"

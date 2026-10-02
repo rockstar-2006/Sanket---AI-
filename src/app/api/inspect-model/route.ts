@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const glbPath = path.join(process.cwd(), 'public', 'model', 'man.glb');
-    const buffer = fs.readFileSync(glbPath);
+    const { searchParams } = new URL(req.url);
+    const fileName = searchParams.get('file') || 'masc_vroid.vrm';
+    const filePath = path.join(process.cwd(), 'public', fileName);
+    const buffer = fs.readFileSync(filePath);
 
     const jsonLength = buffer.readUInt32LE(12);
     const jsonChunk = buffer.slice(20, 20 + jsonLength).toString('utf8');
@@ -13,16 +15,13 @@ export async function GET() {
 
     const nodes = gltf.nodes || [];
     const skins = gltf.skins || [];
-
-    const joints = skins[0]?.joints ? skins[0].joints.map((j: number) => nodes[j]?.name) : [];
-    const allNodeNames = nodes.map((n: any) => n.name);
+    const vrm = gltf.extensions?.VRM || gltf.extensions?.VRMC_vrm;
 
     return NextResponse.json({
+      extensions: Object.keys(gltf.extensions || {}),
+      humanoidBones: vrm?.humanoid?.humanBones || vrm?.humanoid,
       totalNodes: nodes.length,
-      jointsCount: joints.length,
-      joints,
-      allNodeNames,
-      animations: gltf.animations?.map((a: any) => a.name) || [],
+      sampleNodes: nodes.slice(0, 30).map((n: any) => n.name),
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

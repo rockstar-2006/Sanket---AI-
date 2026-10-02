@@ -5,7 +5,7 @@ const { Server } = require('socket.io');
 
 const dev = process.argv.includes('--dev');
 const hostname = '0.0.0.0';
-const port = Number(process.env.PORT || 3005);
+const port = Number(process.env.PORT || 3000);
 
 const nextApp = next({ dev, hostname, port });
 const handle = nextApp.getRequestHandler();

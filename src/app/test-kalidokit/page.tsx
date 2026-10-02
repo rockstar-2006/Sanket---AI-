@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import Script from 'next/script';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -22,9 +22,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Gauge,
+  Search,
+  X,
+  FolderTree,
+  Zap,
 } from 'lucide-react';
-import { animateVRM, getVRMBoneNode } from '@/lib/vrmKalidokitBridge';
-import { SignKinematicsSolver } from '@/lib/signKinematics';
+import { VrmKinematicsEngine } from '@/lib/vrmKinematicsEngine';
+import { Holographic3DSkeleton } from '@/lib/holographic3DSkeleton';
+import { vectorEmbeddingEngine, SemanticMatchResult } from '@/lib/vectorEmbeddingEngine';
+import { LandmarkMotionSmoother } from '@/lib/motionSmoothing';
 
 // Expose THREE globally immediately for UMD scripts
 if (typeof window !== 'undefined') {
@@ -59,44 +65,28 @@ const POSE_CONNECTIONS = [
   [11, 23], [12, 24], [23, 24] // Torso
 ];
 
-const DATASET_PRESETS = [
-  'goodafternoon/MVI_0046.parquet',
-  'goodafternoon/MVI_0047.parquet',
-  'goodafternoon/MVI_0048.parquet',
-  'goodafternoon/MVI_0049.parquet',
-  'goodafternoon/MVI_0050.parquet',
-  'alright/MVI_0037.parquet',
-  'alright/MVI_0038.parquet',
-  'alright/MVI_0039.parquet',
-  'goodevening/MVI_0001.parquet',
-  'goodevening/MVI_0052.parquet',
+export interface DatasetWordGroup {
+  word: string;
+  category?: string;
+  fullPath?: string;
+  count: number;
+  files: string[];
+}
+
+const DEFAULT_DATASET_WORDS: DatasetWordGroup[] = [
+  { word: 'goodafternoon', category: 'Greetings & Basics', fullPath: 'goodafternoon', count: 22, files: ['goodafternoon/MVI_0046.parquet'] },
+  { word: 'alright', category: 'Greetings & Basics', fullPath: 'alright', count: 21, files: ['alright/MVI_0037.parquet'] },
+  { word: 'goodevening', category: 'Greetings & Basics', fullPath: 'goodevening', count: 21, files: ['goodevening/MVI_0001.parquet'] },
+  { word: 'goodmorning', category: 'Greetings & Basics', fullPath: 'goodmorning', count: 21, files: ['goodmorning/MVI_0042.parquet'] },
+  { word: 'goodnight', category: 'Greetings & Basics', fullPath: 'goodnight', count: 21, files: ['goodnight/MVI_0002.parquet'] },
+  { word: 'hello', category: 'Greetings & Basics', fullPath: 'hello', count: 21, files: ['hello/MVI_0029.parquet'] },
+  { word: 'howareyou', category: 'Greetings & Basics', fullPath: 'howareyou', count: 21, files: ['howareyou/MVI_0033.parquet'] },
+  { word: 'pleased', category: 'Greetings & Basics', fullPath: 'pleased', count: 21, files: ['pleased/MVI_0009.parquet'] },
+  { word: 'thankyou', category: 'Greetings & Basics', fullPath: 'thankyou', count: 21, files: ['thankyou/MVI_0006.parquet'] },
 ];
 
 function round3(v: number) {
   return Math.round(v * 1000) / 1000;
-}
-
-function mixamoToVrmHumanoidName(name: string) {
-  const match = name.match(/^mixamorig(Left|Right)(Hand)?(Arm|ForeArm|Hand)?(Thumb|Index|Middle|Ring|Pinky)?([123])?$/);
-  if (!match) {
-    if (name === 'mixamorigSpine') return 'spine';
-    if (name === 'mixamorigSpine1') return 'chest';
-    if (name === 'mixamorigNeck') return 'neck';
-    if (name === 'mixamorigHead') return 'head';
-    return name;
-  }
-
-  const [, side, hand, limb, finger, joint] = match;
-  const sideName = side.toLowerCase();
-  if (limb === 'Arm') return `${sideName}UpperArm`;
-  if (limb === 'ForeArm') return `${sideName}LowerArm`;
-  if (limb === 'Hand' && !finger) return `${sideName}Hand`;
-  if (finger) {
-    const fingerName = finger === 'Pinky' ? 'little' : finger.toLowerCase();
-    const jointName = joint === '1' ? 'Proximal' : joint === '2' ? 'Intermediate' : 'Distal';
-    return `${sideName}${fingerName}${jointName}`;
-  }
-  return name;
 }
 
 export default function TestKalidokitVRMPage() {
@@ -104,15 +94,24 @@ export default function TestKalidokitVRMPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const container3dRef = useRef<HTMLDivElement>(null);
 
+  // Dynamic Dataset Catalog State
+  const [datasetWords, setDatasetWords] = useState<DatasetWordGroup[]>(DEFAULT_DATASET_WORDS);
+  const [categories, setCategories] = useState<string[]>(['All']);
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedWord, setSelectedWord] = useState<string>('goodafternoon');
+
   // Mode Selection: Parquet (Pre-extracted Ground-Truth) vs MOV (Live Video Inference)
   const [sourceMode, setSourceMode] = useState<'parquet' | 'mov'>('parquet');
   const [currentFile, setCurrentFile] = useState('goodafternoon/MVI_0046.parquet');
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [autoPlay, setAutoPlay] = useState(true);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
 
   // Parquet Data State
   const [parquetData, setParquetData] = useState<any>(null);
   const [currentFrameIdx, setCurrentFrameIdx] = useState(0);
+  const currentFrameIdxRef = useRef(0);
   const [isLoadingParquet, setIsLoadingParquet] = useState(false);
 
   // Script & Engine Readiness
@@ -124,6 +123,64 @@ export default function TestKalidokitVRMPage() {
   const [fps, setFps] = useState(0);
   const [copied, setCopied] = useState(false);
   const [showInspector, setShowInspector] = useState(true);
+
+  // 3D Display Mode: 3D Holographic Skeleton (Primary ground truth) vs VRM Character vs Dual
+  const [display3DMode, setDisplay3DMode] = useState<'skeleton' | 'vrm' | 'dual'>('skeleton');
+  const holographic3DRef = useRef<Holographic3DSkeleton | null>(null);
+
+  // Vector Embedding Semantic Search & Landmark Motion Smoothing State
+  const [vectorQuery, setVectorQuery] = useState('');
+  const [vectorMatches, setVectorMatches] = useState<SemanticMatchResult[]>([]);
+  const [smoothMotionEnabled, setSmoothMotionEnabled] = useState(true);
+  const smootherRef = useRef<LandmarkMotionSmoother>(new LandmarkMotionSmoother());
+
+  const currentWordGroup = useMemo(() => {
+    return (
+      datasetWords.find(
+        (w) =>
+          (w.fullPath && w.fullPath === selectedWord) ||
+          w.word === selectedWord ||
+          `${w.category}/${w.word}` === selectedWord
+      ) || datasetWords[0]
+    );
+  }, [datasetWords, selectedWord]);
+  const takeIndex = currentWordGroup ? currentWordGroup.files.indexOf(currentFile) : -1;
+
+  const selectWordGroup = useCallback((w: DatasetWordGroup) => {
+    const wordKey = w.fullPath || w.word;
+    setSelectedWord(wordKey);
+    if (w.files && w.files.length > 0) {
+      setCurrentFile(w.files[0]);
+      currentFrameIdxRef.current = 0;
+      setCurrentFrameIdx(0);
+      if (autoPlay) {
+        setIsPlaying(true);
+      }
+    }
+  }, [autoPlay]);
+
+  const categoryWordCounts = useMemo(() => {
+    const counts: Record<string, number> = { All: datasetWords.length };
+    for (const w of datasetWords) {
+      const cat = w.category || 'Greetings & Basics';
+      counts[cat] = (counts[cat] || 0) + 1;
+    }
+    return counts;
+  }, [datasetWords]);
+
+  const filteredWords = useMemo(() => {
+    return datasetWords.filter((w) => {
+      const matchCategory =
+        selectedCategory === 'All' ||
+        w.category === selectedCategory;
+      const q = searchQuery.trim().toLowerCase();
+      const matchSearch =
+        !q ||
+        w.word.toLowerCase().includes(q) ||
+        (w.category && w.category.toLowerCase().includes(q));
+      return matchCategory && matchSearch;
+    });
+  }, [datasetWords, selectedCategory, searchQuery]);
 
   // Telemetry State for Live Inspector
   const [telemetry, setTelemetry] = useState({
@@ -150,9 +207,19 @@ export default function TestKalidokitVRMPage() {
   const isProcessingFrameRef = useRef(false);
   const lastLogTimeRef = useRef(0);
   const latestSnapshotRef = useRef<any>(null);
-  const parquetSolverRef = useRef(new SignKinematicsSolver());
+  const kinematicsEngineRef = useRef(new VrmKinematicsEngine());
   const animTimeRef = useRef(0);
   const lastTickTimeRef = useRef(performance.now());
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+
+  const resetCamera = useCallback(() => {
+    if (cameraRef.current && controlsRef.current) {
+      cameraRef.current.position.set(0, 1.25, 1.48);
+      controlsRef.current.target.set(0, 1.18, 0);
+      controlsRef.current.update();
+    }
+  }, []);
 
   // ─── 1. Initialize Three.js Scene and Load VRM Model ───────────────────────
   useEffect(() => {
@@ -166,7 +233,8 @@ export default function TestKalidokitVRMPage() {
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 1000);
-    camera.position.set(0, 1.18, 1.40);
+    camera.position.set(0, 1.25, 1.48);
+    cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(width, height);
@@ -178,26 +246,41 @@ export default function TestKalidokitVRMPage() {
     container3dRef.current.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 1.08, 0);
+    controls.target.set(0, 1.18, 0);
     controls.enableDamping = true;
+    controlsRef.current = controls;
 
-    // Studio Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+    // Studio & Holographic Lighting (High Visibility for Deaf Accessibility)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.6);
     scene.add(ambientLight);
 
-    const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
     keyLight.position.set(1.5, 3.5, 2.5);
     keyLight.castShadow = true;
     scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(0x93c5fd, 1.2);
+    const fillLight = new THREE.DirectionalLight(0x93c5fd, 1.4);
     fillLight.position.set(-1.5, 2.0, 2.0);
     scene.add(fillLight);
+
+    // Front & Back Cyber Rim Lights to emphasize hand gestures and limb outlines
+    const holoRimLight = new THREE.PointLight(0x06b6d4, 2.2, 8);
+    holoRimLight.position.set(0, 0.8, 1.2);
+    scene.add(holoRimLight);
+
+    const holoBackLight = new THREE.DirectionalLight(0x38bdf8, 1.5);
+    holoBackLight.position.set(0, 2.0, -1.8);
+    scene.add(holoBackLight);
 
     // Floor Grid
     const grid = new THREE.GridHelper(10, 20, 0x334155, 0x1e293b);
     grid.position.y = 0;
     scene.add(grid);
+
+    // 3D Holographic Skeleton (Direct Ground-Truth 3D representation)
+    const holo3D = new Holographic3DSkeleton(scene);
+    holographic3DRef.current = holo3D;
+    holo3D.setVisible(display3DMode === 'skeleton' || display3DMode === 'dual');
 
     // Sanitize VRM MToon ShaderMaterials into clean Three.js standard materials
     const sanitizeVRMMaterials = (root: THREE.Object3D) => {
@@ -228,18 +311,18 @@ export default function TestKalidokitVRMPage() {
                 mat.name?.toLowerCase().includes('eyebrow') ||
                 mat.name?.toLowerCase().includes('eyelash') ||
                 mat.name?.toLowerCase().includes('hair') ||
-                mat.name?.toLowerCase().includes('cutout');
+                mat.transparent ||
+                mat.opacity < 1.0;
 
               return new THREE.MeshStandardMaterial({
                 map: map,
-                color: map ? 0xffffff : 0xecd0c0,
-                roughness: 0.6,
+                color: mat.color || new THREE.Color(0xffffff),
+                roughness: 0.65,
                 metalness: 0.05,
                 transparent: isAlphaCutout,
                 alphaTest: isAlphaCutout ? 0.35 : 0.0,
-                depthWrite: true,
-                depthTest: true,
-                side: isAlphaCutout ? THREE.DoubleSide : THREE.FrontSide,
+                depthWrite: !isAlphaCutout,
+                side: THREE.DoubleSide,
               });
             }
             return mat;
@@ -261,6 +344,7 @@ export default function TestKalidokitVRMPage() {
       vrmRef.current = vrm;
       sanitizeVRMMaterials(vrm.scene || sceneObj);
       (vrm.scene || sceneObj).rotation.y = Math.PI; // Face camera directly
+      (vrm.scene || sceneObj).visible = display3DMode === 'vrm' || display3DMode === 'dual';
       scene.add(vrm.scene || sceneObj);
       setVrmLoaded(true);
       setStatusMessage('VRM Model (masc_vroid.vrm) loaded & calibrated.');
@@ -355,6 +439,33 @@ export default function TestKalidokitVRMPage() {
     };
   }, []);
 
+  // Sync 3D view mode visibility (Skeleton vs VRM vs Dual)
+  useEffect(() => {
+    if (holographic3DRef.current) {
+      holographic3DRef.current.setVisible(display3DMode === 'skeleton' || display3DMode === 'dual');
+    }
+    if (vrmRef.current?.scene) {
+      vrmRef.current.scene.visible = display3DMode === 'vrm' || display3DMode === 'dual';
+    }
+  }, [display3DMode]);
+
+  // ─── 1.5. Fetch Catalog of All Words in D:\Matri\Dataset ────────────────────
+  useEffect(() => {
+    fetch('/api/dataset-parquet?action=list')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.words) && data.words.length > 0) {
+          setDatasetWords(data.words);
+          if (Array.isArray(data.categories) && data.categories.length > 0) {
+            setCategories(['All', ...data.categories]);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load dataset catalog:', err);
+      });
+  }, []);
+
   // ─── 2. Fetch Parquet Data on File Selection ────────────────────────────────
   useEffect(() => {
     if (sourceMode !== 'parquet') return;
@@ -370,11 +481,15 @@ export default function TestKalidokitVRMPage() {
       })
       .then((data) => {
         if (!isMounted) return;
-        parquetSolverRef.current.reset();
+        kinematicsEngineRef.current.reset();
         setParquetData(data);
+        currentFrameIdxRef.current = 0;
         setCurrentFrameIdx(0);
         setIsLoadingParquet(false);
         setStatusMessage(`Parquet loaded: ${data.totalFrames} frames (${data.durationSec}s)`);
+        if (autoPlay) {
+          setIsPlaying(true);
+        }
       })
       .catch((err) => {
         if (!isMounted) return;
@@ -400,24 +515,27 @@ export default function TestKalidokitVRMPage() {
 
     ctx.clearRect(0, 0, w, h);
 
-    // Optional: Draw video frame underneath if MOV mode
+    // 1. Background Grid & Holographic Backdrop
     if (sourceMode === 'mov' && videoRef.current) {
       ctx.drawImage(videoRef.current, 0, 0, w, h);
     } else {
-      // Dark slate blueprint background for Parquet Mode
-      ctx.fillStyle = '#0a0d14';
+      // Deep cyber slate vignette
+      const bgGrad = ctx.createRadialGradient(w / 2, h / 2, 50, w / 2, h / 2, Math.max(w, h));
+      bgGrad.addColorStop(0, '#0c101a');
+      bgGrad.addColorStop(1, '#05070b');
+      ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, w, h);
 
-      // Grid lines
-      ctx.strokeStyle = '#1e293b';
+      // Blueprint Grid
+      ctx.strokeStyle = 'rgba(30, 41, 59, 0.6)';
       ctx.lineWidth = 1;
-      for (let x = 0; x < w; x += 40) {
+      for (let x = 0; x < w; x += 36) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, h);
         ctx.stroke();
       }
-      for (let y = 0; y < h; y += 40) {
+      for (let y = 0; y < h; y += 36) {
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(w, y);
@@ -427,12 +545,50 @@ export default function TestKalidokitVRMPage() {
 
     if (!frameData) return;
 
-    // A. Draw Pose Bones & Joints (Cyan)
-    if (frameData.poseLandmarks && frameData.poseLandmarks.length >= 25) {
-      const pose = frameData.poseLandmarks;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
-      ctx.lineWidth = 3;
+    const pose = frameData.poseLandmarks;
+    const lh = frameData.leftHandLandmarks;
+    const rh = frameData.rightHandLandmarks;
+    const face = frameData.faceLandmarks;
+
+    // ─── 2. Human Torso & Chest Silhouette ──────────────────────────────────
+    if (pose && pose.length >= 25) {
+      const p11 = pose[11]; // L Shoulder
+      const p12 = pose[12]; // R Shoulder
+      const p23 = pose[23]; // L Hip
+      const p24 = pose[24]; // R Hip
+
+      if (p11 && p12 && p23 && p24 && (p11.x !== 0 || p12.x !== 0)) {
+        // Translucent torso shield
+        ctx.beginPath();
+        ctx.moveTo(p11.x * w, p11.y * h);
+        ctx.lineTo(p12.x * w, p12.y * h);
+        ctx.lineTo(p24.x * w, p24.y * h);
+        ctx.lineTo(p23.x * w, p23.y * h);
+        ctx.closePath();
+
+        const torsoGrad = ctx.createLinearGradient(0, p11.y * h, 0, p23.y * h);
+        torsoGrad.addColorStop(0, 'rgba(6, 182, 212, 0.14)');
+        torsoGrad.addColorStop(1, 'rgba(6, 182, 212, 0.02)');
+        ctx.fillStyle = torsoGrad;
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(6, 182, 212, 0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+
+    // ─── 3. Glowing Pose Bones & Joint Capsules ──────────────────────────────
+    if (pose && pose.length >= 25) {
+      // Pass 1: Outer Neon Bloom
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = 'rgba(56, 189, 248, 0.6)';
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+      ctx.lineWidth = 6;
       POSE_CONNECTIONS.forEach(([i, j]) => {
         const p1 = pose[i];
         const p2 = pose[j];
@@ -444,21 +600,56 @@ export default function TestKalidokitVRMPage() {
         }
       });
 
-      ctx.fillStyle = '#38bdf8';
+      // Pass 2: Sharp Inner Bone Core
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.5;
+      POSE_CONNECTIONS.forEach(([i, j]) => {
+        const p1 = pose[i];
+        const p2 = pose[j];
+        if (p1 && p2 && (p1.x !== 0 || p1.y !== 0) && (p2.x !== 0 || p2.y !== 0)) {
+          ctx.beginPath();
+          ctx.moveTo(p1.x * w, p1.y * h);
+          ctx.lineTo(p2.x * w, p2.y * h);
+          ctx.stroke();
+        }
+      });
+
+      // Joint Nodes
       pose.forEach((pt: any, i: number) => {
         if (i <= 24 && pt && (pt.x !== 0 || pt.y !== 0)) {
+          // Halo
           ctx.beginPath();
-          ctx.arc(pt.x * w, pt.y * h, 3.5, 0, 2 * Math.PI);
+          ctx.arc(pt.x * w, pt.y * h, 5, 0, 2 * Math.PI);
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.3)';
+          ctx.fill();
+
+          // Core
+          ctx.beginPath();
+          ctx.arc(pt.x * w, pt.y * h, 2.5, 0, 2 * Math.PI);
+          ctx.fillStyle = '#ffffff';
           ctx.fill();
         }
       });
     }
 
-    // B. Draw Left Hand (Screen-Right signer hand, Emerald)
-    if (frameData.leftHandLandmarks && frameData.leftHandLandmarks.length === 21) {
-      const lh = frameData.leftHandLandmarks;
+    // ─── 4. Inactive Hand (Screen-Right, Emerald Glow) ───────────────────────
+    if (lh && lh.length === 21) {
+      // Palm fill
+      ctx.beginPath();
+      ctx.moveTo(lh[0].x * w, lh[0].y * h);
+      ctx.lineTo(lh[5].x * w, lh[5].y * h);
+      ctx.lineTo(lh[9].x * w, lh[9].y * h);
+      ctx.lineTo(lh[13].x * w, lh[13].y * h);
+      ctx.lineTo(lh[17].x * w, lh[17].y * h);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
+      ctx.fill();
 
-      ctx.strokeStyle = 'rgba(74, 222, 128, 0.8)';
+      // Finger bones glow
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = 'rgba(16, 185, 129, 0.7)';
+      ctx.strokeStyle = '#10b981';
       ctx.lineWidth = 2;
       HAND_CONNECTIONS.forEach(([i, j]) => {
         const p1 = lh[i];
@@ -471,21 +662,50 @@ export default function TestKalidokitVRMPage() {
         }
       });
 
-      ctx.fillStyle = '#4ade80';
+      // Finger joints
+      ctx.shadowBlur = 0;
       lh.forEach((pt: any) => {
         if (pt && (pt.x !== 0 || pt.y !== 0)) {
           ctx.beginPath();
-          ctx.arc(pt.x * w, pt.y * h, 3, 0, 2 * Math.PI);
+          ctx.arc(pt.x * w, pt.y * h, 2.5, 0, 2 * Math.PI);
+          ctx.fillStyle = '#6ee7b7';
           ctx.fill();
         }
       });
     }
 
-    // C. Draw Right Hand (Screen-Left signer hand, Rose - Main Signer Hand)
-    if (frameData.rightHandLandmarks && frameData.rightHandLandmarks.length === 21) {
-      const rh = frameData.rightHandLandmarks;
+    // ─── 5. Active Signing Hand (Screen-Left, Vibrant Coral / Rose Glow) ────
+    if (rh && rh.length === 21) {
+      // Palm Webbing
+      ctx.beginPath();
+      ctx.moveTo(rh[0].x * w, rh[0].y * h);
+      ctx.lineTo(rh[5].x * w, rh[5].y * h);
+      ctx.lineTo(rh[9].x * w, rh[9].y * h);
+      ctx.lineTo(rh[13].x * w, rh[13].y * h);
+      ctx.lineTo(rh[17].x * w, rh[17].y * h);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.15)';
+      ctx.fill();
 
-      ctx.strokeStyle = 'rgba(244, 63, 94, 0.85)';
+      // Pass 1: Neon Glow Bloom
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = 'rgba(244, 63, 94, 0.8)';
+      ctx.strokeStyle = 'rgba(244, 63, 94, 0.4)';
+      ctx.lineWidth = 5;
+      HAND_CONNECTIONS.forEach(([i, j]) => {
+        const p1 = rh[i];
+        const p2 = rh[j];
+        if (p1 && p2 && (p1.x !== 0 || p1.y !== 0) && (p2.x !== 0 || p2.y !== 0)) {
+          ctx.beginPath();
+          ctx.moveTo(p1.x * w, p1.y * h);
+          ctx.lineTo(p2.x * w, p2.y * h);
+          ctx.stroke();
+        }
+      });
+
+      // Pass 2: Sharp Core Bone
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#f43f5e';
       ctx.lineWidth = 2.5;
       HAND_CONNECTIONS.forEach(([i, j]) => {
         const p1 = rh[i];
@@ -498,61 +718,101 @@ export default function TestKalidokitVRMPage() {
         }
       });
 
-      ctx.fillStyle = '#f43f5e';
+      // Joint Nodes with Illuminated Fingertips
       rh.forEach((pt: any, idx: number) => {
         if (pt && (pt.x !== 0 || pt.y !== 0)) {
-          ctx.beginPath();
-          // Larger dots on tips
           const isTip = [4, 8, 12, 16, 20].includes(idx);
-          ctx.arc(pt.x * w, pt.y * h, isTip ? 4 : 2.5, 0, 2 * Math.PI);
-          ctx.fill();
+          if (isTip) {
+            ctx.beginPath();
+            ctx.arc(pt.x * w, pt.y * h, 5, 0, 2 * Math.PI);
+            ctx.fillStyle = 'rgba(251, 113, 133, 0.5)';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(pt.x * w, pt.y * h, 2.5, 0, 2 * Math.PI);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+          } else {
+            ctx.beginPath();
+            ctx.arc(pt.x * w, pt.y * h, 2, 0, 2 * Math.PI);
+            ctx.fillStyle = '#fca5a5';
+            ctx.fill();
+          }
         }
       });
+
+      // ── Detect Pinch & Render Glowing Energy Ring at Contact Point ──────
+      const p4 = rh[4]; // Thumb tip
+      const p8 = rh[8]; // Index tip
+      if (p4 && p8) {
+        const handScale = Math.hypot(rh[0].x - rh[9].x, rh[0].y - rh[9].y) || 0.1;
+        const pinchDist = Math.hypot(p4.x - p8.x, p4.y - p8.y) / handScale;
+        if (pinchDist < 0.38) {
+          const cx = ((p4.x + p8.x) / 2) * w;
+          const cy = ((p4.y + p8.y) / 2) * h;
+
+          ctx.save();
+          ctx.shadowBlur = 14;
+          ctx.shadowColor = '#38bdf8';
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 9, 0, 2 * Math.PI);
+          ctx.stroke();
+
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+          ctx.fill();
+          ctx.restore();
+        }
+      }
     }
 
-    // D. Draw Face Outline (Purple)
-    if (frameData.faceLandmarks && frameData.faceLandmarks.length >= 200) {
-      ctx.fillStyle = 'rgba(168, 85, 247, 0.4)';
-      frameData.faceLandmarks.forEach((pt: any, i: number) => {
-        if (i % 6 === 0 && pt && (pt.x !== 0 || pt.y !== 0)) {
+    // ─── 6. Facial Contours (Eyes, Brows & Mouth in Violet/Purple) ───────────
+    if (face && face.length >= 200) {
+      ctx.shadowBlur = 4;
+      ctx.shadowColor = 'rgba(168, 85, 247, 0.5)';
+      ctx.fillStyle = 'rgba(192, 132, 252, 0.65)';
+      face.forEach((pt: any, i: number) => {
+        if (i % 5 === 0 && pt && (pt.x !== 0 || pt.y !== 0)) {
           ctx.beginPath();
           ctx.arc(pt.x * w, pt.y * h, 1.5, 0, 2 * Math.PI);
           ctx.fill();
         }
       });
     }
+
+    ctx.restore();
   }, [sourceMode]);
 
-  // ─── 4. Apply Holistic Frame Results to VRM Avatar ─────────────────────────
+  // ─── 4. Apply Holistic Frame Results to 3D Viewport & VRM Avatar ───────────
   const handleHolisticResults = useCallback((results: any, frameNum = 0, timeSec = 0) => {
+    if (!results) return;
+
+    // 1. Direct 3D Holographic Skeleton update with optional Landmark Motion Smoothing
+    if (holographic3DRef.current) {
+      const finalResults = smoothMotionEnabled && results.poseLandmarks
+        ? smootherRef.current.smooth(results)
+        : results;
+      holographic3DRef.current.update(finalResults);
+    }
+
     if (!vrmRef.current) return;
 
     try {
       const vrm = vrmRef.current;
-      let solved: any = {};
+      const currentTime = timeSec || (videoRef.current ? videoRef.current.currentTime : 0);
 
-      if (sourceMode === 'parquet') {
-        const rotations = parquetSolverRef.current.solveFrame(
-          {
-            frame: results.frameIndex ?? frameNum,
-            pose: results.poseLandmarks || [],
-            leftHand: results.leftHandLandmarks,
-            rightHand: results.rightHandLandmarks,
-            face: results.faceLandmarks,
-          },
-          timeSec * 1000
-        );
-
-        Object.entries(rotations).forEach(([boneName, values]) => {
-          const node = getVRMBoneNode(vrm, mixamoToVrmHumanoidName(boneName));
-          if (!node) return;
-          const [x, y, z, w] = values as [number, number, number, number];
-          node.quaternion.set(x, y, z, w).normalize();
-        });
-        solved = rotations;
-      } else {
-        solved = animateVRM(vrm, results, videoRef.current);
-      }
+      // Unified Two-Bone Analytical IK & Continuous Phalanx Flexion
+      kinematicsEngineRef.current.update(
+        vrm,
+        {
+          poseLandmarks: results.poseLandmarks || null,
+          leftHandLandmarks: results.leftHandLandmarks || null,
+          rightHandLandmarks: results.rightHandLandmarks || null,
+          faceLandmarks: results.faceLandmarks || null,
+        },
+        currentTime * 1000
+      );
 
       // Extract telemetry angles
       const getAngles = (boneName: string): [number, number, number] => {
@@ -564,8 +824,6 @@ export default function TestKalidokitVRMPage() {
         const euler = new THREE.Euler().setFromQuaternion(node.quaternion, 'XYZ');
         return [round3(euler.x), round3(euler.y), round3(euler.z)];
       };
-
-      const currentTime = timeSec || (videoRef.current ? videoRef.current.currentTime : 0);
 
       const snapshot = {
         timestampSec: round3(currentTime),
@@ -592,13 +850,14 @@ export default function TestKalidokitVRMPage() {
     }
   }, [kalidokitLoaded, sourceMode]);
 
-  const currentFrameIdxRef = useRef(0);
-
   // Sync ref with state on manual changes
   const onScrubberChange = (newIdx: number) => {
     setIsPlaying(false);
     currentFrameIdxRef.current = newIdx;
     setCurrentFrameIdx(newIdx);
+    if (sourceMode === 'parquet' && parquetData) {
+      renderParquetFrame(newIdx);
+    }
   };
 
   // ─── 5. Render a specific Parquet Frame ─────────────────────────────────────
@@ -610,12 +869,7 @@ export default function TestKalidokitVRMPage() {
     handleHolisticResults(frame, frameIdx, frame.timeSec);
   }, [parquetData, drawLandmarksOnCanvas, handleHolisticResults]);
 
-  // Render on manual scrubber change or step
-  useEffect(() => {
-    if (sourceMode === 'parquet' && parquetData) {
-      renderParquetFrame(currentFrameIdx);
-    }
-  }, [currentFrameIdx, parquetData, sourceMode, renderParquetFrame]);
+
 
   // ─── 6. Parquet Playback Animation Loop (30 FPS Accurate) ───────────────────
   useEffect(() => {
@@ -631,17 +885,23 @@ export default function TestKalidokitVRMPage() {
       lastTime = now;
 
       accumulatedTime += dt * playbackSpeed;
+      const totalSignSec = parquetData.totalFrames / 30.0;
+      const pauseDuration = 0.5; // Natural 0.5s hold at end of sign before looping
+
       let targetIdx = Math.floor(accumulatedTime * 30.0);
 
-      if (targetIdx >= parquetData.totalFrames) {
+      if (accumulatedTime >= totalSignSec + pauseDuration) {
         accumulatedTime = 0;
         targetIdx = 0;
+      } else if (targetIdx >= parquetData.totalFrames) {
+        targetIdx = parquetData.totalFrames - 1; // Hold completed sign shape
       }
 
       if (targetIdx !== lastRenderedIdx) {
         lastRenderedIdx = targetIdx;
         currentFrameIdxRef.current = targetIdx;
         setCurrentFrameIdx(targetIdx);
+        renderParquetFrame(targetIdx);
       }
 
       animId = requestAnimationFrame(loop);
@@ -843,6 +1103,243 @@ export default function TestKalidokitVRMPage() {
           <div className="px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700 text-slate-300 font-mono">
             {fps} FPS
           </div>
+
+          <button
+            onClick={() => setAutoPlay(!autoPlay)}
+            className={`px-3 py-1.5 rounded-full flex items-center gap-1.5 border transition-all cursor-pointer ${
+              autoPlay
+                ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300 font-semibold'
+                : 'bg-slate-800 border-slate-700 text-slate-400'
+            }`}
+          >
+            <Sparkles className={`w-3.5 h-3.5 ${autoPlay ? 'text-cyan-400 animate-pulse' : 'text-slate-500'}`} />
+            Auto-Play on Select: {autoPlay ? 'ON' : 'OFF'}
+          </button>
+        </div>
+      </div>
+
+      {/* Interactive Category & Word Explorer */}
+      <div className="max-w-7xl mx-auto w-full mb-5 bg-slate-900/80 border border-slate-800/90 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
+        {/* Top bar: Title, Search, and Global Stats */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  Dataset Explorer & Hologram Signer
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800/50 font-mono font-semibold">
+                  {datasetWords.length} Words • {categories.length - 1} Categories • {datasetWords.reduce((a, b) => a + b.count, 0)} Takes
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Explore words across subfolders from Indian Sign Language (INCLUDE) dataset
+              </p>
+            </div>
+          </div>
+
+          {/* Search Input */}
+          <div className="relative min-w-[240px] sm:w-80">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search 260+ signs (e.g. happy, cat, train)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-950/80 border border-slate-700/80 text-xs rounded-xl pl-9 pr-8 py-2 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 font-mono"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Vector Embedding Semantic Search & Motion Smoothing Strip */}
+        <div className="bg-slate-950/90 border border-cyan-500/30 rounded-xl p-3 flex flex-col gap-2.5 shadow-md">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-cyan-950/80 border border-cyan-500/40 text-cyan-400">
+                <Zap className="w-3.5 h-3.5" />
+              </div>
+              <span className="text-xs font-bold text-white uppercase tracking-wider">
+                Vector Embedding Semantic Matcher & Motion Smoother
+              </span>
+            </div>
+
+            {/* Smooth Motion Toggle */}
+            <button
+              onClick={() => {
+                setSmoothMotionEnabled(!smoothMotionEnabled);
+                smootherRef.current.reset();
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition ${
+                smoothMotionEnabled
+                  ? 'bg-cyan-950 text-cyan-300 border-cyan-500/50 shadow-xs'
+                  : 'bg-slate-800 text-slate-400 border-slate-700'
+              }`}
+            >
+              <Activity className="w-3 h-3" />
+              <span>Smooth Landmark Motion: {smoothMotionEnabled ? 'ON (Fluid 60fps)' : 'OFF (Raw)'}</span>
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Test Vector Cosine Similarity (e.g. physician, automobile, puppy, cheerful, laptop)..."
+              value={vectorQuery}
+              onChange={(e) => {
+                const q = e.target.value;
+                setVectorQuery(q);
+                if (q.trim().length > 1) {
+                  setVectorMatches(vectorEmbeddingEngine.findSemanticMatches(q, 4, 0.65));
+                } else {
+                  setVectorMatches([]);
+                }
+              }}
+              className="flex-1 min-w-[260px] bg-slate-900 border border-slate-700 text-xs rounded-xl px-3 py-1.5 text-white placeholder-slate-500 font-mono focus:outline-none focus:border-cyan-400"
+            />
+
+            {/* Quick Example Synonym Chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto text-[11px] font-mono">
+              <span className="text-slate-400 text-[10px] uppercase font-bold">Try:</span>
+              {[
+                { label: 'physician → doctor', term: 'physician' },
+                { label: 'automobile → car', term: 'automobile' },
+                { label: 'puppy → dog', term: 'puppy' },
+                { label: 'cheerful → happy', term: 'cheerful' },
+                { label: 'laptop → computer', term: 'laptop' },
+              ].map((ex) => (
+                <button
+                  key={ex.term}
+                  onClick={() => {
+                    setVectorQuery(ex.term);
+                    const matches = vectorEmbeddingEngine.findSemanticMatches(ex.term, 4, 0.65);
+                    setVectorMatches(matches);
+                    if (matches.length > 0) {
+                      const matchedGroup = datasetWords.find(w => w.word.toLowerCase() === matches[0].matchedVocab.toLowerCase());
+                      if (matchedGroup) {
+                        selectWordGroup(matchedGroup);
+                      }
+                    }
+                  }}
+                  className="px-2 py-0.5 rounded-lg bg-slate-900 hover:bg-cyan-950 text-cyan-300 hover:text-white border border-slate-800 transition whitespace-nowrap"
+                >
+                  {ex.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Matches Output */}
+          {vectorMatches.length > 0 && (
+            <div className="flex items-center gap-2 overflow-x-auto pt-1">
+              <span className="text-[10px] font-bold text-cyan-400 uppercase">Cosine Matches:</span>
+              {vectorMatches.map((m, idx) => {
+                const targetGroup = datasetWords.find(w => w.word.toLowerCase() === m.matchedVocab.toLowerCase());
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      if (targetGroup) {
+                        selectWordGroup(targetGroup);
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono transition ${
+                      idx === 0
+                        ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white border-cyan-400 shadow-md font-bold'
+                        : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                    }`}
+                  >
+                    <span>{m.matchedVocab.toUpperCase()}</span>
+                    <span className="text-[10px] opacity-80">({Math.round(m.similarity * 100)}%)</span>
+                    <span className="text-[9px] opacity-60">[{m.category}]</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Category Filter Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+          {categories.map((cat) => {
+            const isCatActive = selectedCategory === cat;
+            const count = categoryWordCounts[cat] ?? 0;
+            return (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer border ${
+                  isCatActive
+                    ? 'bg-cyan-500 text-slate-950 border-cyan-300 shadow-md shadow-cyan-500/30 font-bold'
+                    : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200'
+                }`}
+              >
+                <span>{cat}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono ${
+                    isCatActive ? 'bg-slate-950/30 text-slate-950 font-bold' : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Word Chips Grid / Bar */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-1 scrollbar-thin max-h-32 flex-wrap">
+          {filteredWords.length === 0 ? (
+            <div className="text-xs text-slate-400 italic py-2">
+              No words found matching "{searchQuery}" in {selectedCategory}.
+            </div>
+          ) : (
+            filteredWords.map((w) => {
+              const wordKey = w.fullPath || w.word;
+              const isSelected =
+                wordKey === selectedWord ||
+                w.word === selectedWord ||
+                `${w.category}/${w.word}` === selectedWord;
+
+              return (
+                <button
+                  key={w.fullPath || w.word}
+                  onClick={() => selectWordGroup(w)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase transition-all shrink-0 flex items-center gap-1.5 cursor-pointer border ${
+                    isSelected
+                      ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-slate-950 border-cyan-300 shadow-md shadow-cyan-500/25 scale-105 ring-2 ring-cyan-400/40'
+                      : 'bg-slate-950/60 text-slate-300 border-slate-800 hover:border-cyan-500/40 hover:text-white hover:bg-slate-800/80'
+                  }`}
+                >
+                  <span>{w.word}</span>
+                  {selectedCategory === 'All' && w.category && (
+                    <span className={`text-[9px] px-1 py-0.5 rounded opacity-75 lowercase font-normal ${isSelected ? 'bg-slate-950/20 text-slate-950 font-medium' : 'bg-slate-800/80 text-cyan-300'}`}>
+                      {w.category}
+                    </span>
+                  )}
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
+                      isSelected
+                        ? 'bg-slate-950/30 text-slate-950 font-black'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {w.count}
+                  </span>
+                </button>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -860,24 +1357,97 @@ export default function TestKalidokitVRMPage() {
               {sourceMode === 'parquet' ? 'Parquet Frame Landmarks Blueprint' : 'Source Dataset Video (.MOV)'}
             </div>
 
-            {/* Parquet Take Selector */}
-            <select
-              value={currentFile}
-              onChange={(e) => {
-                setCurrentFile(e.target.value);
-                setIsPlaying(false);
-              }}
-              className="bg-slate-800 border border-slate-700 text-xs rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:ring-1 focus:ring-purple-500 font-mono"
-            >
-              {DATASET_PRESETS.map((file) => (
-                <option key={file} value={file}>
-                  {file}
-                </option>
-              ))}
-            </select>
+            {/* Word & Take Selectors */}
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              {/* Category Dropdown */}
+              <select
+                value={selectedCategory}
+                onChange={(e) => {
+                  const newCat = e.target.value;
+                  setSelectedCategory(newCat);
+                  const match = datasetWords.find(
+                    (w) => newCat === 'All' || w.category === newCat
+                  );
+                  if (match) {
+                    selectWordGroup(match);
+                  }
+                }}
+                className="bg-slate-950 border border-slate-700 text-xs rounded-lg px-2 py-1 text-slate-300 font-semibold focus:outline-none focus:ring-1 focus:ring-cyan-400 tracking-wide cursor-pointer max-w-[130px]"
+              >
+                {categories.map((c) => (
+                  <option key={c} value={c} className="bg-slate-900 text-slate-200">
+                    {c} ({categoryWordCounts[c] ?? 0})
+                  </option>
+                ))}
+              </select>
+
+              {/* Word Selector */}
+              <select
+                value={currentWordGroup ? (currentWordGroup.fullPath || currentWordGroup.word) : selectedWord}
+                onChange={(e) => {
+                  const targetKey = e.target.value;
+                  const group = datasetWords.find((w) => (w.fullPath || w.word) === targetKey || w.word === targetKey);
+                  if (group) {
+                    selectWordGroup(group);
+                  }
+                }}
+                className="bg-cyan-950/60 border border-cyan-700/60 text-xs rounded-lg px-2.5 py-1 text-cyan-300 font-semibold focus:outline-none focus:ring-1 focus:ring-cyan-400 uppercase tracking-wide cursor-pointer max-w-[150px]"
+              >
+                {filteredWords.map((w) => {
+                  const key = w.fullPath || w.word;
+                  return (
+                    <option key={key} value={key} className="bg-slate-900 text-slate-200">
+                      {w.word.toUpperCase()} ({w.count})
+                    </option>
+                  );
+                })}
+              </select>
+
+              {/* Take Selector */}
+              <select
+                value={currentFile}
+                onChange={(e) => {
+                  const newFile = e.target.value;
+                  setCurrentFile(newFile);
+                  currentFrameIdxRef.current = 0;
+                  setCurrentFrameIdx(0);
+                  if (autoPlay) {
+                    setIsPlaying(true);
+                  }
+                }}
+                className="bg-slate-800 border border-slate-700 text-xs rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:ring-1 focus:ring-purple-500 font-mono cursor-pointer max-w-[160px]"
+              >
+                {currentWordGroup?.files.map((file, idx) => {
+                  const fileName = file.split('/').pop() || file;
+                  return (
+                    <option key={file} value={file} className="bg-slate-900 text-slate-200">
+                      Take #{idx + 1} ({fileName})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
           </div>
 
           <div className="relative flex-1 bg-black flex items-center justify-center min-h-[400px]">
+            {/* Active Word HUD Badge */}
+            <div className="absolute top-3 left-3 z-20 pointer-events-none flex items-center gap-2 bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-lg border border-cyan-500/40 shadow-lg">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/40 uppercase font-mono font-bold">
+                    {currentWordGroup?.category || 'Greetings & Basics'}
+                  </span>
+                  <span className="text-xs font-black uppercase tracking-wider text-cyan-300">
+                    {currentWordGroup?.word.toUpperCase() || selectedWord.toUpperCase()}
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  Take {takeIndex >= 0 ? takeIndex + 1 : 1} of {currentWordGroup?.files.length || 1} • {totalFrames} Frames
+                </span>
+              </div>
+            </div>
+
             {sourceMode === 'mov' && (
               <video
                 ref={videoRef}
@@ -987,19 +1557,93 @@ export default function TestKalidokitVRMPage() {
           </div>
         </div>
 
-        {/* Right Side: 3D VRM Model */}
+        {/* Right Side: 3D Interactive Viewport */}
         <div className="bg-slate-900/60 rounded-2xl border border-slate-800/80 overflow-hidden flex flex-col shadow-xl">
-          <div className="p-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+          <div className="p-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
-              <Activity className="w-4 h-4 text-purple-400" />
-              VRM Humanoid Avatar (masc_vroid.vrm + @pixiv/three-vrm)
+              <Activity className="w-4 h-4 text-cyan-400" />
+              <span>3D Sign Model</span>
             </div>
-            <div className="text-[11px] text-slate-400">
-              OrbitControls: Click & Drag to Rotate
+
+            {/* 3D Mode Selector: 3D Holographic Skeleton vs 3D VRM Mesh vs Dual */}
+            <div className="flex items-center bg-slate-950/80 p-1 rounded-lg border border-slate-800 text-[11px] flex-wrap">
+              <button
+                onClick={() => setDisplay3DMode('skeleton')}
+                className={`px-2.5 py-1 rounded-md font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  display3DMode === 'skeleton'
+                    ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Sparkles className="w-3 h-3" />
+                3D Hologram (Direct)
+              </button>
+              <button
+                onClick={() => setDisplay3DMode('vrm')}
+                className={`px-2.5 py-1 rounded-md font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  display3DMode === 'vrm'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                VRM Avatar
+              </button>
+              <button
+                onClick={() => setDisplay3DMode('dual')}
+                className={`px-2.5 py-1 rounded-md font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  display3DMode === 'dual'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Dual Overlay
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={resetCamera}
+                className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-cyan-300 text-[11px] font-medium flex items-center gap-1.5 transition-all border border-slate-700/80 cursor-pointer shadow-sm"
+                title="Reset 3D camera to front center view"
+              >
+                <RotateCcw className="w-3 h-3 text-cyan-400" />
+                <span>Center View</span>
+              </button>
+              <div className="text-[11px] text-slate-400 font-mono hidden md:block">
+                Orbit: Drag 360°
+              </div>
             </div>
           </div>
 
-          <div ref={container3dRef} className="relative flex-1 min-h-[400px] bg-[#07090e]" />
+          <div className="relative flex-1 min-h-[400px] bg-[#07090e]">
+            <div ref={container3dRef} className="absolute inset-0 w-full h-full" />
+            {/* Active Word 3D HUD Badge */}
+            <div className="absolute top-3 left-3 z-20 pointer-events-none flex items-center gap-2 bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-lg border border-cyan-500/40 shadow-lg">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/40 uppercase font-mono font-bold">
+                    {currentWordGroup?.category || 'Greetings & Basics'}
+                  </span>
+                  <span className="text-xs font-black uppercase tracking-wider text-cyan-300">
+                    {currentWordGroup?.word.toUpperCase() || selectedWord.toUpperCase()}
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  Take {takeIndex >= 0 ? takeIndex + 1 : 1} of {currentWordGroup?.files.length || 1} • {totalFrames} Frames
+                </span>
+              </div>
+            </div>
+
+            <div className="absolute top-3 right-3 z-10 pointer-events-none bg-slate-950/80 backdrop-blur-md px-2.5 py-1 rounded-lg border border-slate-800 text-[10px] text-slate-400 font-mono flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              {display3DMode === 'skeleton'
+                ? '3D Hologram Mode (Ground-Truth)'
+                : display3DMode === 'vrm'
+                ? 'VRM Character Mode'
+                : 'Dual Overlay Mode'}
+            </div>
+          </div>
 
           {/* Real-time Status Bar */}
           <div className="p-3 bg-slate-900 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 flex-wrap gap-2">

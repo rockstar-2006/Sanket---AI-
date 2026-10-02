@@ -38,28 +38,28 @@ const fadeInUp = {
   initial: { opacity: 0, y: 50 },
   whileInView: { opacity: 1, y: 0 },
   viewport: { once: false, amount: 0.2 },
-  transition: { duration: 0.75, ease: [0.25, 1, 0.5, 1] },
+  transition: { duration: 0.75, ease: [0.25, 1, 0.5, 1] as const },
 };
 
 const fadeInFromLeft = {
   initial: { opacity: 0, x: -75 },
   whileInView: { opacity: 1, x: 0 },
   viewport: { once: false, amount: 0.2 },
-  transition: { duration: 0.8, ease: [0.25, 1, 0.5, 1] },
+  transition: { duration: 0.8, ease: [0.25, 1, 0.5, 1] as const },
 };
 
 const fadeInFromRight = {
   initial: { opacity: 0, x: 75 },
   whileInView: { opacity: 1, x: 0 },
   viewport: { once: false, amount: 0.2 },
-  transition: { duration: 0.8, ease: [0.25, 1, 0.5, 1] },
+  transition: { duration: 0.8, ease: [0.25, 1, 0.5, 1] as const },
 };
 
 const fadeInScale = {
   initial: { opacity: 0, scale: 0.86, y: 30 },
   whileInView: { opacity: 1, scale: 1, y: 0 },
   viewport: { once: false, amount: 0.2 },
-  transition: { duration: 0.7, ease: [0.25, 1, 0.5, 1] },
+  transition: { duration: 0.7, ease: [0.25, 1, 0.5, 1] as const },
 };
 
 export default function LandingPage() {

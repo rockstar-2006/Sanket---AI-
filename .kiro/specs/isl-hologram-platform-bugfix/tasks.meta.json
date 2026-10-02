@@ -1,0 +1,818 @@
+{
+  "pbtResults": {
+    "1.1 Explore BUG 1 & 2 — Stale closure / multi-word queue dropout": {
+      "status": "passed",
+      "failingExample": "10/10 bug conditions confirmed present in unfixed code. Counterexamples:\n\nBUG 1 (Speed Staleness):\n- C1: setInterval used in startPlayingFrames (line 256) — not recursive setTimeout\n- C2: `playbackSpeed` in startPlayingFrames dep array: [playbackSpeed, smoothMotion, stopAllPlayback]\n- C3: `const intervalMs = Math.round((1000 / 30) / playbackSpeed)` at line 253 — speed baked in at creation\n\nBUG 2 (Dep Chain):\n- C4: stopAllPlayback in startPlayingFrames deps (chain link 1)\n- C5: startPlayingFrames in playAction deps: [smoothMotion, startPlayingFrames, stopAllPlayback] (link 2)\n- C6: stopAllPlayback in playAction deps (link 3)\n- C7: playAction in advanceQueue deps: [playAction, glideToStandby, replayFullSequence] (link 4)\n\nAbsence of fix:\n- C8: playbackSpeedRef NOT present (fix not applied)\n- C9: startPlayingFramesRef NOT present (fix not applied)\n- C10: stopAllPlaybackRef NOT present (fix not applied)\n\nMulti-word sentences (queue > 1) will drop word 2+ because: during await fetch() inside playAction, setIsLoadingFrames(true) triggers re-render → startPlayingFrames recreated → playAction stale closure calls old startPlayingFrames → broken advance chain.",
+      "lastRunTimestamp": 1790341222305
+    },
+    "1.2 Explore BUG 3 — Fingerspell letter cutoff": {
+      "status": "passed",
+      "failingExample": "Input: unknown word \"OK\" → 2 letter actions [{type:\"letter\",token:\"O\"},{type:\"letter\",token:\"K\"}]\n\nStep 1 — playAction(\"O\") called:\n  • stopAllPlayback() via direct closure (C5)\n  • generateFingerspellFrames(\"O\", 14) → 14 frames\n  • setIsLoadingFrames triggers re-render → startPlayingFrames recreated\n  • playAction recreated (dep: startPlayingFrames in dep array — C2)\n  • advanceQueueRef.current = NEW advanceQueue (stale playAction inside)\n\nStep 2 — O completes at frame 14:\n  • advanceTimeoutRef fires → advanceQueueRef.current()\n  • advanceQueue holds stale playAction closure (C4: no playActionRef.current)\n  • stale playAction calls stale stopAllPlayback (C1: in dep array)\n  • stale startPlayingFrames called directly in else-branch (C3: no ref)\n  • Interval for \"K\" references stale frameList; self-cancels at idx 0\n\nObserved: lettersPlayed = 1 (only O completes); K renders 0–3 frames then stops\nExpected: lettersPlayed = 2 (both O and K complete)\n\nAll 7/7 bug conditions confirmed present on UNFIXED code:\n  C1: stopAllPlayback in playAction dep array — [smoothMotion, startPlayingFrames, stopAllPlayback]\n  C2: startPlayingFrames in playAction dep array — confirmed above\n  C3: startPlayingFrames(...) called directly in fingerspell else branch\n  C4: playActionRef.current NOT used in advanceQueue — [playAction, glideToStandby, replayFullSequence]\n  C5: stopAllPlayback() called directly at top of playAction (not via ref)\n  C6: playActionRef = useRef(...) does NOT exist in source\n  C7: stopAllPlaybackRef.current() NOT called inside playAction",
+      "lastRunTimestamp": 1790341427972
+    },
+    "1.4 Explore BUG 4 — API key in client bundle": {
+      "status": "passed",
+      "failingExample": "Line 80: `this.apiKey = apiKey || process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';`\nNo `import 'server-only'` guard present.\nC1 ✓ NEXT_PUBLIC_GEMINI_API_KEY found in source (line 80)\nC2 ✓ `import 'server-only'` absent (missing guard confirmed)\nC3 ✓ NEXT_PUBLIC_GEMINI_API_KEY is inside the constructor apiKey assignment (line 80, not a comment)\nC4 ✓ GEMINI_API_KEY (server-safe) also present on same line (only the NEXT_PUBLIC_ variant needs removal)",
+      "lastRunTimestamp": 1790341819785
+    },
+    "1.3 Explore BUG 5 — Left hand threshold asymmetry": {
+      "status": "passed",
+      "failingExample": "Counterexample: wristDistL=0.22 → handValidL=false (hidden) under current `> 0.18` threshold. Right-hand equivalent at same distance: dist2DR=0.22 → handValidR=true (visible) under `> 0.28`. The left hand is falsely hidden in the range (0.18, 0.28] — confirmed by C1–C6 all passing. Source: `if (wristDistL > 0.18)` in holographic3DSkeleton.ts left-hand detachment block vs `if (dist2DR > 0.28)` in right-hand block.",
+      "lastRunTimestamp": 1790341831926
+    },
+    "1.5 Explore BUG 6 — Double render per frame": {
+      "status": "passed",
+      "failingExample": "All 4/4 bug conditions confirmed on unfixed code (exit 0):\nC1: useEffect with dep [currentFrameIdx, parquetData, sourceMode, renderParquetFrame] calls renderParquetFrame inside its body — the reactive duplicate path.\nC2: RAF loop (Effect 6) does NOT call renderParquetFrame directly — it only calls setCurrentFrameIdx(targetIdx), making the reactive effect the sole render path.\nC3: onScrubberChange does NOT call renderParquetFrame directly — it also relies on the reactive effect.\nC4: No renderParquetFrame(targetIdx) inside the RAF loop's `if (targetIdx !== lastRenderedIdx)` block — fix from task 5.1 not yet applied.\nCounterexample: RAF sets state (setCurrentFrameIdx) → React re-render → reactive useEffect fires → renderParquetFrame called. The structural coupling means the RAF and reactive effect cannot be decoupled without simultaneously adding a direct RAF call (5.1) and removing the duplicate effect (5.2).",
+      "lastRunTimestamp": 1790341917669
+    }
+  },
+  "executionHistory": {
+    "1.1 Explore BUG 1 & 2 — Stale closure / multi-word queue dropout": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341044341
+      },
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341059248
+      },
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341240903
+      }
+    ],
+    "1.2 Explore BUG 3 — Fingerspell letter cutoff": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341044457
+      },
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341249966
+      },
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341442935
+      }
+    ],
+    "1.3 Explore BUG 5 — Left hand threshold asymmetry": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341044621
+      },
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341447502
+      },
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341936301
+      }
+    ],
+    "1.4 Explore BUG 4 — API key in client bundle": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341044748
+      },
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341452326
+      },
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341941333
+      }
+    ],
+    "1.5 Explore BUG 6 — Double render per frame": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341044861
+      },
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341456820
+      },
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341945576
+      }
+    ],
+    "2.1 Preservation — Single-word playback at fixed speed": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341044966
+      },
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341954831
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790342456329
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790343542379
+      }
+    ],
+    "2.2 Preservation — Speed set before playback starts": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341045122
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790342456797
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790343542576
+      }
+    ],
+    "2.3 Preservation — Right hand detachment threshold unchanged": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341045255
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790342457315
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790343543352
+      }
+    ],
+    "2.4 Preservation — MOV mode unaffected in test-kalidokit": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341045358
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790342458038
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790343543929
+      }
+    ],
+    "2.5 Preservation — Manual scrubbing in test-kalidokit": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341045456
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790342458448
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790343544473
+      }
+    ],
+    "2.6 Preservation — Gemini fallback still functions": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341045559
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790342459004
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790343545035
+      }
+    ],
+    "2.7 Preservation — glideToStandby fires after last word": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341045652
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790342459394
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790343545451
+      }
+    ],
+    "3.1 Change threshold from 0.18 to 0.28": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341045745
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790343551450
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790345870062
+      }
+    ],
+    "3.2 Verify BUG 5 exploration test now passes": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341045839
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790345891988
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346304146
+      }
+    ],
+    "3.3 Verify preservation tests 2.3 still pass": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341045933
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346315546
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346344596
+      }
+    ],
+    "4.1 Add `import 'server-only'` as the first import": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341046052
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790343551971
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790345870539
+      }
+    ],
+    "4.2 Remove `NEXT_PUBLIC_GEMINI_API_KEY` fallback from constructor (~line 80)": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341046177
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790345875741
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790345887172
+      }
+    ],
+    "4.3 Verify BUG 4 exploration test now passes": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341046283
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790345892958
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346304683
+      }
+    ],
+    "4.4 Verify preservation tests 2.6 still pass": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341046418
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346314895
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346345413
+      }
+    ],
+    "5.1 Add direct `renderParquetFrame(targetIdx)` call inside the RAF loop (Effect 6)": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341046522
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790343552867
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790345871076
+      }
+    ],
+    "5.2 Remove the reactive duplicate `useEffect` at lines 870–874": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341046616
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790345876817
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790345886263
+      }
+    ],
+    "5.3 Add direct `renderParquetFrame(newIdx)` call in `onScrubberChange`": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341046717
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790345877172
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790345886748
+      }
+    ],
+    "5.4 Verify BUG 6 exploration test now passes": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341046819
+      },
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790345893170
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346305121
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346309522
+      }
+    ],
+    "5.5 Verify preservation tests 2.4 and 2.5 still pass": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341046917
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346316014
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346345750
+      }
+    ],
+    "6.1 Add `playbackSpeedRef` — stable ref synced to `playbackSpeed` state": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341047011
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346370444
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347213478
+      }
+    ],
+    "6.2 Add stable function refs for `stopAllPlayback` and `startPlayingFrames`": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341047099
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346371206
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347214197
+      }
+    ],
+    "6.3 Rewrite `stopAllPlayback` with empty deps array, assign to ref": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341047185
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346371862
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347214804
+      }
+    ],
+    "6.4 Rewrite `startPlayingFrames` with recursive `setTimeout` pattern, assign to ref": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341047278
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346372459
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347215586
+      }
+    ],
+    "6.5 Update `playAction` to call via refs, remove stale deps": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341047386
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346373293
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347216266
+      }
+    ],
+    "6.6 Update `advanceQueue` to call `playAction` via ref, remove stale deps": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341047485
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346373803
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347216695
+      }
+    ],
+    "6.7 Verify BUG 1 & 2 exploration test now passes": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341048275
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347221973
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347665406
+      }
+    ],
+    "6.8 Verify BUG 3 exploration test now passes": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341048467
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347222340
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347665694
+      }
+    ],
+    "6.9 Verify preservation tests 2.1, 2.2, 2.7 still pass": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341048631
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347222930
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347666196
+      }
+    ],
+    "7.1 Add `AbortController` with 3000ms timeout inside `ISLGrammarSubAgent.parseGrammar()`": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341048804
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347672652
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348220354
+      }
+    ],
+    "7.2 Add structured fallback logging for all failure paths": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341048972
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347673211
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348221160
+      }
+    ],
+    "7.3 Verify preservation test 2.6 still passes after Improvement A+B": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341049115
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348229618
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348424621
+      }
+    ],
+    "8.1 Add `prefetchCacheRef` after existing timer refs": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341049262
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347673806
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348221771
+      }
+    ],
+    "8.2 Add background prefetch trigger inside `startPlayingFrames`": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341049508
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348079134
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348222319
+      }
+    ],
+    "8.3 Add cache-hit fast path in `playAction`": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341049639
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348079897
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348222706
+      }
+    ],
+    "9.1 Add `relative` positioning to 3D viewport container `div`": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341049771
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347674417
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348223511
+      }
+    ],
+    "9.2 Add conditional loading overlay as first child of 3D viewport `div`": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341049902
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348080830
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348224063
+      }
+    ],
+    "10. Checkpoint — Ensure all tests pass": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341050026
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348230231
+      },
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348425093
+      }
+    ],
+    "1. Write bug condition exploration tests (BEFORE any fix)": [
+      {
+        "executionId": "0b361087-23fc-4273-b9a9-1474e3857b33",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790341945774
+      }
+    ],
+    "2. Write preservation property tests (BEFORE implementing any fix)": [
+      {
+        "executionId": "16f2e9fd-78e0-48b9-b905-726519938d74",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790343545585
+      }
+    ],
+    "3. Fix BUG 5 — Left-hand detachment threshold asymmetry": [
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346344786
+      }
+    ],
+    "4. Fix BUG 4 — API key server-only guard + remove NEXT_PUBLIC fallback": [
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346345622
+      }
+    ],
+    "5. Fix BUG 6 — Double render per parquet frame in test-kalidokit": [
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790346345914
+      }
+    ],
+    "6. Fix BUGs 1 + 2 + 3 — Stale closure dependency chain + fingerspell cutoff": [
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790347666441
+      }
+    ],
+    "8. Improvement C — Next-word parquet prefetch pipeline": [
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348222955
+      }
+    ],
+    "9. Improvement D — Loading overlay in 3D viewport": [
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348224329
+      }
+    ],
+    "7. Improvement A + B — Gemini timeout + structured fallback logging": [
+      {
+        "executionId": "d6f58090-5761-4f24-bd06-86a1c631bd89",
+        "chatSessionId": "sess_ecdb466c-295a-4cd8-8748-f565694447f3",
+        "timestamp": 1790348424882
+      }
+    ]
+  }
+}

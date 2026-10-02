@@ -25,7 +25,8 @@ import {
   Mic,
   VideoOff,
   PhoneOff,
-  Volume2
+  Volume2,
+  Bot
 } from 'lucide-react';
 
 export default function DashboardPage() {

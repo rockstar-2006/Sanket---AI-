@@ -1267,6 +1267,7 @@ export function AvatarModel({
       }
 
       // 4. Facial Expression (Polite Smile) & Lip-Sync
+      const currentSmile = isSpeakingRef.current ? 0.45 : 0.25;
       if (morphMesh && morphMesh.morphTargetInfluences) {
         if (smileMorphIndex >= 0) {
           morphMesh.morphTargetInfluences[smileMorphIndex] = THREE.MathUtils.lerp(
