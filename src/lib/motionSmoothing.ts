@@ -164,3 +164,7 @@ export class LandmarkMotionSmoother {
     };
   }
 }
+
+// Alias exports for backward and forward compatibility
+export { LandmarkMotionSmoother as LandmarkSmoother };
+export { createNeutralPoseLandmarks } from './holographic3DSkeleton';

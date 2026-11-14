@@ -70,26 +70,38 @@ export async function createMeetingSession(data: {
   return { ...meeting, id: meetingRef.id };
 }
 
-// Get meeting session by ID or Room Code
+// Get meeting session by ID or Room Code with fast direct lookup & timeout protection
 export async function getMeetingSession(idOrCode: string): Promise<MeetingSession | null> {
-  // First try document ID
-  const docRef = doc(db, "meetings", idOrCode);
-  const snap = await getDoc(docRef);
-  
-  if (snap.exists()) {
-    return { id: snap.id, ...snap.data() } as MeetingSession;
+  const clean = String(idOrCode || '').trim();
+  if (!clean) return null;
+
+  try {
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1800));
+
+    const fetchPromise = (async (): Promise<MeetingSession | null> => {
+      // 1. Direct query by roomCode (most common)
+      const q = query(collection(db, "meetings"), where("roomCode", "==", clean.toUpperCase()));
+      const querySnap = await getDocs(q);
+      if (!querySnap.empty) {
+        const firstDoc = querySnap.docs[0];
+        return { id: firstDoc.id, ...firstDoc.data() } as MeetingSession;
+      }
+
+      // 2. Fallback query by document ID
+      const docRef = doc(db, "meetings", clean);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        return { id: snap.id, ...snap.data() } as MeetingSession;
+      }
+
+      return null;
+    })();
+
+    return await Promise.race([fetchPromise, timeoutPromise]);
+  } catch (err) {
+    console.warn('Session query note:', err);
+    return null;
   }
-
-  // Otherwise query by roomCode
-  const q = query(collection(db, "meetings"), where("roomCode", "==", idOrCode.toUpperCase()));
-  const querySnap = await getDocs(q);
-
-  if (!querySnap.empty) {
-    const firstDoc = querySnap.docs[0];
-    return { id: firstDoc.id, ...firstDoc.data() } as MeetingSession;
-  }
-
-  return null;
 }
 
 // Fetch meeting history for a user

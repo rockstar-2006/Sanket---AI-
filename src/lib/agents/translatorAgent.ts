@@ -86,6 +86,45 @@ export const COMPOUND_PHRASE_MAP: Record<string, string> = {
   'mobile phone': 'cellphone',
 };
 
+// Direct pronoun & communicative lemmatization to 262 ISL dataset gestures
+export const CONCEPTUAL_LEMMATIZATION_MAP: Record<string, string> = {
+  // Pronouns
+  your: 'you',
+  yours: 'you',
+  yourself: 'you',
+  my: 'i',
+  mine: 'i',
+  me: 'i',
+  myself: 'i',
+  his: 'he',
+  him: 'he',
+  himself: 'he',
+  her: 'she',
+  hers: 'she',
+  herself: 'she',
+  our: 'we',
+  ours: 'we',
+  us: 'we',
+  ourselves: 'we',
+  their: 'they',
+  theirs: 'they',
+  them: 'they',
+  themselves: 'they',
+
+  // Common Communicative Concepts
+  name: 'sign', // In ISL, personal name is asked via 'sign' (sign-name)
+  identity: 'sign',
+  who: 'people',
+  person: 'people',
+  where: 'location',
+  when: 'time',
+  why: 'reason',
+  fast: 'fast',
+  automobile: 'car',
+  physician: 'doctor',
+  clinic: 'hospital',
+};
+
 export interface SemanticSubstitution {
   original: string;
   matchedVocab: string;

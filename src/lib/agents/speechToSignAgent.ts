@@ -4,48 +4,10 @@
  * Indian Sign Language (ISL) grammar and choreographs smooth 3D Hologram playback.
  */
 
-import 'server-only';
-import { VOCABULARY_262, ISL_EXCLUDED_STOPWORDS, COMPOUND_PHRASE_MAP } from './translatorAgent';
+import { VOCABULARY_262, ISL_EXCLUDED_STOPWORDS, COMPOUND_PHRASE_MAP, CONCEPTUAL_LEMMATIZATION_MAP } from './translatorAgent';
 import { vectorEmbeddingEngine, SemanticMatchResult } from '@/lib/vectorEmbeddingEngine';
 
-// Direct pronoun & interrogative lemmatization to 262 ISL dataset gestures
-export const CONCEPTUAL_LEMMATIZATION_MAP: Record<string, string> = {
-  // Pronouns
-  your: 'you',
-  yours: 'you',
-  yourself: 'you',
-  my: 'i',
-  mine: 'i',
-  me: 'i',
-  myself: 'i',
-  his: 'he',
-  him: 'he',
-  himself: 'he',
-  her: 'she',
-  hers: 'she',
-  herself: 'she',
-  our: 'we',
-  ours: 'we',
-  us: 'we',
-  ourselves: 'we',
-  their: 'they',
-  theirs: 'they',
-  them: 'they',
-  themselves: 'they',
-
-  // Common Communicative Concepts
-  name: 'sign', // In ISL, personal name is asked via 'sign' (sign-name)
-  identity: 'sign',
-  who: 'people',
-  person: 'people',
-  where: 'location',
-  when: 'time',
-  why: 'reason',
-  fast: 'fast',
-  automobile: 'car',
-  physician: 'doctor',
-  clinic: 'hospital',
-};
+export { CONCEPTUAL_LEMMATIZATION_MAP };
 
 export interface ChoreographedSignAction {
   type: 'word' | 'letter';
@@ -81,7 +43,10 @@ export class ISLGrammarSubAgent {
     this.apiKey = apiKey || process.env.GEMINI_API_KEY || '';
   }
 
-  async parseGrammar(text: string): Promise<{
+  async parseGrammar(
+    text: string,
+    options?: { apiKey?: string; model?: string; context?: string }
+  ): Promise<{
     islTokens: string[];
     omittedStopwords: string[];
     explanation: string;
@@ -92,11 +57,16 @@ export class ISLGrammarSubAgent {
       return { islTokens: [], omittedStopwords: [], explanation: 'Empty input', modelUsed: 'none' };
     }
 
+    const effectiveApiKey = options?.apiKey || this.apiKey;
+    const effectiveModel = options?.model || this.primaryModel;
+
     // If Gemini API Key is available, call Gemini Flash with structured prompt
-    if (this.apiKey) {
+    if (effectiveApiKey) {
       try {
+        const contextClause = options?.context ? `\nMeeting Context & User Background: "${options.context}"` : '';
         const prompt = `You are an expert Indian Sign Language (ISL) linguist and grammatical parser.
 Translate the following spoken English sentence into natural Indian Sign Language (ISL) gloss notation.
+${contextClause}
 
 Linguistic Rules:
 1. OMIT English auxiliary verbs and grammatical glue words that do NOT exist in ISL (such as: "is", "am", "are", "was", "were", "the", "a", "an", "to", "in", "at", "by", "for", "do", "does", "did", "and").
@@ -117,7 +87,7 @@ Sentence to translate: "${cleanText}"`;
         let fetchRes: Response;
         try {
           fetchRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${this.primaryModel}:generateContent?key=${this.apiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/${effectiveModel}:generateContent?key=${effectiveApiKey}`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -342,7 +312,10 @@ export class SpeechToSignOrchestrator {
     this.vocabAgent = new VectorVocabularySubAgent();
   }
 
-  async processInput(inputText: string): Promise<SpeechToSignPipelineResult> {
+  async processInput(
+    inputText: string,
+    options?: { apiKey?: string; model?: string; context?: string }
+  ): Promise<SpeechToSignPipelineResult> {
     const startTime = Date.now();
 
     // 0. Pre-process verified 262 ISL Compound Phrases (e.g. 'good morning' -> 'goodmorning', 'thank you' -> 'thankyou')
@@ -353,7 +326,7 @@ export class SpeechToSignOrchestrator {
     }
 
     // 1. Grammar parsing sub-agent
-    const grammarResult = await this.grammarAgent.parseGrammar(processedInput);
+    const grammarResult = await this.grammarAgent.parseGrammar(processedInput, options);
 
     // 2. Vector vocabulary matching sub-agent
     const animationQueue: ChoreographedSignAction[] = [];
@@ -376,9 +349,10 @@ export class SpeechToSignOrchestrator {
             animationQueue.push({
               type: 'letter',
               token: char.toUpperCase(),
-              displayLabel: char.toUpperCase(),
+              displayLabel: `${token.toUpperCase()} → [${char.toUpperCase()}]`,
               source: 'fingerspell_letter',
-              durationMs: 380,
+              originalWord: token,
+              durationMs: 400,
             });
           }
         }

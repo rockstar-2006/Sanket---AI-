@@ -51,6 +51,13 @@ export const Navbar: React.FC = () => {
 
         {/* Right Action Buttons */}
         <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/consultation/join"
+            className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs font-bold text-slate-200 hover:text-white hover:bg-slate-800 border border-slate-700/80 transition"
+          >
+            Join Call
+          </Link>
+
           {user ? (
             <>
               <Link
@@ -129,8 +136,16 @@ export const Navbar: React.FC = () => {
             <Link onClick={() => setMobileMenuOpen(false)} href="/#faq" className="px-3 py-2 rounded-xl hover:bg-slate-800 transition">
               Help
             </Link>
+            <Link onClick={() => setMobileMenuOpen(false)} href="/consultation/join" className="px-3 py-2 rounded-xl bg-slate-800 text-cyan-300 font-bold transition flex items-center justify-between">
+              <span>Join Call with Code/Link</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800">Enter</span>
+            </Link>
+            <Link onClick={() => setMobileMenuOpen(false)} href="/consultation/create" className="px-3 py-2 rounded-xl bg-orange-500/20 text-orange-400 font-bold transition flex items-center justify-between">
+              <span>Start New Call</span>
+              <Sparkles className="w-3.5 h-3.5 text-orange-400" />
+            </Link>
             {user && (
-              <Link onClick={() => setMobileMenuOpen(false)} href="/dashboard" className="px-3 py-2 rounded-xl bg-orange-500/20 text-orange-400 font-bold transition">
+              <Link onClick={() => setMobileMenuOpen(false)} href="/dashboard" className="px-3 py-2 rounded-xl bg-slate-800/60 text-slate-200 font-bold transition">
                 Dashboard
               </Link>
             )}

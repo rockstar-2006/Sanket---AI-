@@ -6,6 +6,13 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+
+// ── Global In-Memory Avatar Model Cache ─────────────────────────────────────
+// Keeps the parsed Three.js humanoid rig in memory across component unmounts and re-renders
+let globalCachedModel: THREE.Group | null = null;
+let globalCachedSource: string = '';
 
 export interface BoneAuditReport {
   loadedSource: string;
@@ -27,6 +34,9 @@ export interface AvatarModelProps {
   onBoneAudit?: (report: BoneAuditReport) => void;
   onSignComplete?: (word: string) => void;
   onLoaded?: () => void;
+  isVisible?: boolean;
+  modelUrl?: string;
+  colorMode?: 'auto' | 'natural' | 'original';
   className?: string;
 }
 
@@ -621,6 +631,9 @@ export function AvatarModel({
   onBoneAudit,
   onSignComplete,
   onLoaded,
+  isVisible = true,
+  modelUrl,
+  colorMode = 'auto',
   className = '',
 }: AvatarModelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -631,14 +644,39 @@ export function AvatarModel({
   const onBoneAuditRef = useRef(onBoneAudit);
   const onSignCompleteRef = useRef(onSignComplete);
   const onLoadedRef = useRef(onLoaded);
+  const isVisibleRef = useRef(isVisible);
+  const modelUrlRef = useRef(modelUrl);
+  const colorModeRef = useRef(colorMode);
   const activeSignNameRef = useRef<string | null>(null);
 
   const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingStatus, setLoadingStatus] = useState<string>('Initializing 3D Avatar...');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeSignName, setActiveSignName] = useState<string | null>(null);
 
   const triggerSignRef = useRef<((word: string) => void) | null>(null);
+
+  const reloadModelRef = useRef<((url: string) => void) | null>(null);
+  const reapplyMaterialsRef = useRef<((mode: 'auto' | 'natural' | 'original') => void) | null>(null);
+
+  useEffect(() => {
+    isVisibleRef.current = isVisible;
+  }, [isVisible]);
+
+  useEffect(() => {
+    colorModeRef.current = colorMode;
+    if (reapplyMaterialsRef.current) {
+      reapplyMaterialsRef.current(colorMode);
+    }
+  }, [colorMode]);
+
+  useEffect(() => {
+    modelUrlRef.current = modelUrl;
+    if (modelUrl && reloadModelRef.current) {
+      reloadModelRef.current(modelUrl);
+    }
+  }, [modelUrl]);
 
   useEffect(() => {
     isSpeakingRef.current = isSpeaking;
@@ -705,22 +743,26 @@ export function AvatarModel({
     controls.target.set(0, 1.15, 0);
     controls.update();
 
-    // Studio Lighting Setup
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+    // Studio Lighting Setup - Multi-angle high luminosity
+    const ambientLight = new THREE.AmbientLight(0xffffff, 2.2);
     scene.add(ambientLight);
 
-    const keyLight = new THREE.DirectionalLight(0xffeedd, 2.2);
+    const keyLight = new THREE.DirectionalLight(0xffeedd, 3.0);
     keyLight.position.set(2, 4, 3);
     keyLight.castShadow = true;
     scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(0x99ccff, 1.4);
+    const fillLight = new THREE.DirectionalLight(0x99ccff, 2.2);
     fillLight.position.set(-3, 2, 2);
     scene.add(fillLight);
 
-    const rimLight = new THREE.DirectionalLight(0xffffff, 1.8);
+    const rimLight = new THREE.DirectionalLight(0xffffff, 2.4);
     rimLight.position.set(0, 3, -3);
     scene.add(rimLight);
+
+    const groundBounceLight = new THREE.DirectionalLight(0x94a3b8, 1.4);
+    groundBounceLight.position.set(0, -2, 2);
+    scene.add(groundBounceLight);
 
     const draco = new DRACOLoader();
     draco.setDecoderPath('/draco/');
@@ -758,7 +800,12 @@ export function AvatarModel({
     };
 
     let lastHandAngleLogTime = 0;
-    const logHandAngles = (label: string, extra?: Record<string, any>) => {
+    const logHandAngles = (label: string, extra?: Record<string, any>, force: boolean = false) => {
+      // Guarded: Never log to console during active signing unless developer debug mode is explicitly set
+      if (!force && (typeof window === 'undefined' || !(window as any).__DEBUG_HAND_ANGLES__)) {
+        return;
+      }
+
       const rArm = boneMap.get('RightArm')?.rotation;
       const rForeArm = boneMap.get('RightForeArm')?.rotation;
       const rHand = boneMap.get('RightHand')?.rotation;
@@ -781,10 +828,10 @@ export function AvatarModel({
       console.groupEnd();
     };
 
-    // Attach to window so user can type getHandAngles() in browser console anytime
+    // Attach to window so user can type getHandAngles() in browser console anytime on demand
     if (typeof window !== 'undefined') {
       (window as any).getHandAngles = () => {
-        logHandAngles('Live Snapshot via window.getHandAngles()');
+        logHandAngles('Live Snapshot via window.getHandAngles()', undefined, true);
       };
     }
 
@@ -844,14 +891,130 @@ export function AvatarModel({
     triggerSignRef.current = triggerSign;
 
     // ── 3. Load 3D Model (Supports GLB or FBX) ──────────────────────────────
+    let currentLoadedSource = '';
+    const applyMaterials = (targetModel: THREE.Object3D, src: string) => {
+      const isGlb = src.toLowerCase().includes('.glb') || src.toLowerCase().includes('glb');
+      targetModel.traverse((child) => {
+        if (child instanceof THREE.Mesh || child instanceof THREE.SkinnedMesh) {
+          child.castShadow = child.receiveShadow = true;
+
+          // 1. If it's a GLB and colorMode is not forced to 'natural', PRESERVE 100% of original PBR materials!
+          if (isGlb && colorModeRef.current !== 'natural') {
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            mats.forEach((m) => {
+              if (m) {
+                m.side = THREE.DoubleSide;
+                if ('roughness' in m) (m as any).roughness = Math.min((m as any).roughness ?? 0.65, 0.75);
+                if ('metalness' in m) (m as any).metalness = Math.min((m as any).metalness ?? 0.1, 0.1);
+                m.needsUpdate = true;
+              }
+            });
+          } else {
+            // 2. FBX or forced natural palette
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            const newMats = mats.map((m, matIdx) => {
+              if (!m) return m;
+
+              // A. If material has an original texture map from FBX, ALWAYS preserve it
+              if (m.map) {
+                m.map.needsUpdate = true;
+                return new THREE.MeshStandardMaterial({
+                  map: m.map,
+                  color: new THREE.Color(0xffffff),
+                  roughness: 0.65,
+                  metalness: 0.05,
+                  side: THREE.DoubleSide,
+                  vertexColors: false,
+                });
+              }
+
+              // B. Check if material has a REAL, non-black, visible color (Luminance >= 0.18)
+              // Note: FBX near-black dummy colors (e.g. 0.08) are rejected so the character never turns black!
+              const lum = m.color ? m.color.r * 0.299 + m.color.g * 0.587 + m.color.b * 0.114 : 0;
+              const hasRealColor =
+                m.color && lum >= 0.18 && (colorModeRef.current === 'original' || colorModeRef.current === 'auto');
+
+              if (hasRealColor) {
+                return new THREE.MeshStandardMaterial({
+                  color: m.color.clone(),
+                  roughness: 0.65,
+                  metalness: 0.05,
+                  side: THREE.DoubleSide,
+                  vertexColors: false,
+                });
+              }
+
+              // C. Authentic Natural Human Palette (Skin, Hair, White Shirt, Navy Suit, Slate Pants)
+              const name = ((m.name || '') + ' ' + (child.name || '')).toLowerCase();
+              let colorHex = 0x1e3a5f; // Smart tailored navy jacket
+              let roughness = 0.65;
+              let metalness = 0.05;
+
+              if (/hair|scalp|beard|brow/i.test(name)) {
+                colorHex = 0x241715; // Natural dark espresso hair
+                roughness = 0.85;
+              } else if (/head|face|skin|hand|arm|neck|ear|body/i.test(name)) {
+                colorHex = 0xe0a982; // Warm natural human skin tone
+                roughness = 0.5;
+              } else if (/shirt|collar|tie|inner/i.test(name)) {
+                colorHex = 0xf8fafc; // Clean white shirt
+                roughness = 0.4;
+              } else if (/pant|trouser|bottom|leg|jean/i.test(name)) {
+                colorHex = 0x334155; // Charcoal slate trousers
+                roughness = 0.75;
+              } else if (/shoe|boot|foot|sole|heel/i.test(name)) {
+                colorHex = 0x18181b; // Polished dark leather shoes
+                roughness = 0.35;
+              } else if (/eye|sclera|cornea/i.test(name)) {
+                colorHex = 0xf8fafc; // Bright clean eye sclera
+                roughness = 0.2;
+              } else if (/teeth|tooth/i.test(name)) {
+                colorHex = 0xfafafa; // Clean ivory teeth
+                roughness = 0.25;
+              } else if (/suit|jacket|coat|blazer|top|cloth/i.test(name)) {
+                colorHex = 0x1e3a5f; // Smart navy suit jacket
+                roughness = 0.7;
+              } else {
+                // Multi-mesh body parts fallback
+                const DISTINCT_CHARACTER_PALETTE = [
+                  0x1e3a5f, // 0: Smart Navy Suit
+                  0xe0a982, // 1: Warm Natural Skin Tone
+                  0x334155, // 2: Charcoal Slate Trousers
+                  0x241715, // 3: Dark Hair
+                  0xf8fafc, // 4: Clean White Shirt
+                  0x18181b, // 5: Dark Shoes
+                ];
+                colorHex = DISTINCT_CHARACTER_PALETTE[matIdx % DISTINCT_CHARACTER_PALETTE.length];
+              }
+
+              return new THREE.MeshStandardMaterial({
+                color: new THREE.Color(colorHex),
+                roughness,
+                metalness,
+                side: THREE.DoubleSide,
+                vertexColors: false,
+              });
+            });
+
+            child.material = Array.isArray(child.material) ? newMats : newMats[0];
+          }
+        }
+      });
+    };
+
     const onModelLoaded = (model: THREE.Group | THREE.Object3D, loadedSource: string) => {
+      currentLoadedSource = loadedSource;
+      applyMaterials(model, loadedSource);
+
       model.traverse((child) => {
         const isBone = child instanceof THREE.Bone;
-        const isMixamo = child.name.startsWith('mixamorig');
+        const isMixamo = child.name.toLowerCase().includes('mixamorig');
         if (isBone || isMixamo) {
-          const plain = child.name.replace(/^mixamorig[_:]?/i, '') || child.name;
+          const plain = child.name.replace(/^(mixamorig|bip01)[_:\s]?/i, '') || child.name;
           boneMap.set(plain, child as THREE.Bone);
+          boneMap.set(plain.toLowerCase(), child as THREE.Bone);
           boneMap.set(child.name, child as THREE.Bone);
+          boneMap.set(child.name.toLowerCase(), child as THREE.Bone);
           initialBoneRotations.set(plain, (child as THREE.Bone).rotation.clone());
           initialBoneQuaternions.set(plain, (child as THREE.Bone).quaternion.clone());
           initialBoneQuaternions.set(child.name, (child as THREE.Bone).quaternion.clone());
@@ -859,33 +1022,20 @@ export function AvatarModel({
           const n = child.name.toLowerCase();
           if (n.includes('jaw') || n.includes('chin')) jawBone = child as THREE.Bone;
         }
-        if (child instanceof THREE.Mesh || child instanceof THREE.SkinnedMesh) {
-          child.castShadow = child.receiveShadow = true;
-          const mats = Array.isArray(child.material) ? child.material : [child.material];
-          mats.forEach((m) => {
-            if (m) {
-              // Ensure FBX materials are nicely visible and not dark black
-              if (m.color && (m.color.r < 0.1 && m.color.g < 0.1 && m.color.b < 0.1)) {
-                m.color.setHex(0xd4af87); // Warm avatar skin tone
-              }
-              if ('metalness' in m) (m as any).metalness = 0.05;
-              if ('roughness' in m) (m as any).roughness = 0.65;
-            }
-          });
-          if (child instanceof THREE.SkinnedMesh && child.morphTargetDictionary) {
-            morphMesh = child;
-            const mouthKey = Object.keys(child.morphTargetDictionary).find((s) =>
-              ['open', 'jaw', 'mouth', 'aa'].some((kw) => s.toLowerCase().includes(kw))
-            );
-            if (mouthKey) {
-              mouthMorphIndex = child.morphTargetDictionary[mouthKey];
-            }
-            const smileKey = Object.keys(child.morphTargetDictionary).find((s) =>
-              ['smile', 'happy', 'joy'].some((kw) => s.toLowerCase().includes(kw))
-            );
-            if (smileKey) {
-              smileMorphIndex = child.morphTargetDictionary[smileKey];
-            }
+
+        if (child instanceof THREE.SkinnedMesh && child.morphTargetDictionary) {
+          morphMesh = child;
+          const mouthKey = Object.keys(child.morphTargetDictionary).find((s) =>
+            ['open', 'jaw', 'mouth', 'aa'].some((kw) => s.toLowerCase().includes(kw))
+          );
+          if (mouthKey) {
+            mouthMorphIndex = child.morphTargetDictionary[mouthKey];
+          }
+          const smileKey = Object.keys(child.morphTargetDictionary).find((s) =>
+            ['smile', 'happy', 'joy'].some((kw) => s.toLowerCase().includes(kw))
+          );
+          if (smileKey) {
+            smileMorphIndex = child.morphTargetDictionary[smileKey];
           }
         }
       });
@@ -979,6 +1129,48 @@ export function AvatarModel({
         if (onSignCompleteRef.current && word) onSignCompleteRef.current(word);
       });
 
+      // Cache model in memory across component unmounts and view switches
+      if (!globalCachedModel && model instanceof THREE.Group) {
+        try {
+          globalCachedModel = SkeletonUtils.clone(model) as THREE.Group;
+          globalCachedSource = loadedSource;
+        } catch {
+          // ignore cache clone warning
+        }
+      }
+
+      // Background export to GLB if source was FBX: runs silently after model is ready
+      if (loadedSource.includes('fbx') && typeof window !== 'undefined') {
+        setTimeout(() => {
+          try {
+            const exporter = new GLTFExporter();
+            exporter.parse(
+              model,
+              (gltfBuffer) => {
+                if (gltfBuffer instanceof ArrayBuffer && gltfBuffer.byteLength > 1000) {
+                  console.log(
+                    `[AvatarModel] Auto-exported optimized GLB (${(gltfBuffer.byteLength / 1024 / 1024).toFixed(2)} MB), uploading server cache...`
+                  );
+                  fetch('/api/avatar-model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: gltfBuffer,
+                  })
+                    .then(() => console.log('[AvatarModel] Successfully cached mans.glb on server!'))
+                    .catch((err) => console.warn('[AvatarModel] GLB cache upload notice:', err));
+                }
+              },
+              (exportErr) => {
+                console.warn('[AvatarModel] GLTFExporter notice:', exportErr);
+              },
+              { binary: true }
+            );
+          } catch (e) {
+            console.warn('[AvatarModel] Background GLTF export exception:', e);
+          }
+        }, 1200);
+      }
+
       scene.add(model);
       modelReady = true;
       setIsLoading(false);
@@ -989,42 +1181,238 @@ export function AvatarModel({
       }
     };
 
-    // Load passive_marker_man.fbx, fallback to mans.fbx, then man.glb
+    reapplyMaterialsRef.current = (mode: 'auto' | 'natural' | 'original') => {
+      if (loadedModelObj) {
+        colorModeRef.current = mode;
+        applyMaterials(loadedModelObj, currentLoadedSource);
+      }
+    };
+
+    reloadModelRef.current = (newUrl: string) => {
+      modelUrlRef.current = newUrl;
+      if (loadedModelObj) {
+        scene.remove(loadedModelObj);
+        loadedModelObj = null;
+      }
+      if (skeletonHelper) {
+        scene.remove(skeletonHelper);
+        skeletonHelper = null;
+      }
+      boneMap.clear();
+      initialBoneRotations.clear();
+      initialBoneQuaternions.clear();
+      modelReady = false;
+      setIsLoading(true);
+      setLoadError(null);
+      startModelLoading();
+    };
+
+    // ── 3. High-Performance Non-Blocking Model Loader ──────────────────────
+    let isCancelled = false;
     const fbxLoader = new FBXLoader();
-    const tryLoadFbx = (url: string, nextFallback: () => void) => {
-      fbxLoader.load(
-        url,
-        (fbx) => {
-          console.log(`[ModelLoader] Successfully loaded ${url}`);
-          onModelLoaded(fbx, url);
+
+    const loadFallbackModel = () => {
+      if (isCancelled) return;
+      console.log('[ModelLoader] Loading lightweight /model/man.glb fallback...');
+      setLoadingStatus('Loading fallback humanoid...');
+      setLoadingProgress(70);
+
+      loader.load(
+        '/model/man.glb?v=6',
+        (gltf) => {
+          if (!isCancelled) {
+            setLoadingProgress(100);
+            onModelLoaded(gltf.scene, '/model/man.glb');
+          }
         },
         undefined,
         (err) => {
-          console.warn(`[ModelLoader] Failed ${url}, trying fallback...`, err);
-          nextFallback();
+          console.error('[ModelLoader] All model fallbacks failed:', err);
+          if (!isCancelled) {
+            setLoadError('Failed to load 3D model.');
+            setIsLoading(false);
+          }
         }
       );
     };
 
-    tryLoadFbx('/model/passive_marker_man.fbx?v=2', () => {
-      tryLoadFbx('/model/mans.fbx?v=2', () => {
-        console.log('[ModelLoader] Loading /model/man.glb...');
-        loader.load(
-          '/model/man.glb?v=2',
-          (gltf) => onModelLoaded(gltf.scene, '/model/man.glb'),
-          undefined,
-          (err) => {
-            console.error('Failed to load avatar model:', err);
-            setLoadError('Failed to load 3D model.');
-            setIsLoading(false);
+    const loadDirectFbx = async (targetUrl: string = '/api/avatar-model') => {
+      if (isCancelled) return;
+      try {
+        const cleanName = targetUrl.split('?')[0].split('/').pop() || 'mans.fbx';
+        setLoadingStatus(`Downloading 3D Avatar (${cleanName})...`);
+        setLoadingProgress(10);
+
+        const res = await fetch(targetUrl);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const contentLength = Number(res.headers.get('content-length') || 62534320);
+        const reader = res.body?.getReader();
+
+        const chunks: Uint8Array[] = [];
+        let receivedBytes = 0;
+
+        if (reader) {
+          while (true) {
+            if (isCancelled) return;
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) {
+              chunks.push(value);
+              receivedBytes += value.length;
+              if (contentLength > 0) {
+                const pct = Math.min(90, Math.round((receivedBytes / contentLength) * 90));
+                setLoadingProgress(pct);
+                setLoadingStatus(
+                  `Downloading 3D Avatar (${(receivedBytes / 1024 / 1024).toFixed(1)} / ${(contentLength / 1024 / 1024).toFixed(1)} MB)...`
+                );
+              }
+            }
           }
-        );
-      });
-    });
+        }
+
+        if (isCancelled) return;
+
+        // Combine chunks into ArrayBuffer
+        const allChunks = new Uint8Array(receivedBytes);
+        let pos = 0;
+        for (const chunk of chunks) {
+          allChunks.set(chunk, pos);
+          pos += chunk.length;
+        }
+
+        setLoadingStatus('Preparing 3D humanoid skeleton...');
+        setLoadingProgress(95);
+
+        // CRUCIAL: Yield to the browser event loop with setTimeout so the UI updates
+        // and Chrome's watchdog timer resets before starting the FBX parse!
+        await new Promise((r) => setTimeout(r, 100));
+        if (isCancelled) return;
+
+        // Parse with a safety timeout race so it NEVER deadlocks the tab
+        const parseFbx = () => {
+          return new Promise<THREE.Group>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              reject(new Error('FBX parse timeout'));
+            }, 8000);
+
+            try {
+              const fbx = fbxLoader.parse(allChunks.buffer, '');
+              clearTimeout(timeout);
+              resolve(fbx);
+            } catch (pErr) {
+              clearTimeout(timeout);
+              reject(pErr);
+            }
+          });
+        };
+
+        const fbxResult = await parseFbx();
+        if (!isCancelled) {
+          setLoadingProgress(100);
+          onModelLoaded(fbxResult, cleanName);
+        }
+      } catch (err) {
+        console.warn('[ModelLoader] Mans FBX loading notice, switching to lightweight fallback...', err);
+        loadFallbackModel();
+      }
+    };
+
+    const startModelLoading = async () => {
+      // 0. If user specifically requested a custom modelUrl
+      const customUrl = modelUrlRef.current;
+      if (customUrl) {
+        const lower = customUrl.toLowerCase();
+        if (lower.includes('.glb') || lower.includes('.gltf')) {
+          setLoadingStatus(`Loading 3D model (${customUrl.split('/').pop()})...`);
+          setLoadingProgress(35);
+          loader.load(
+            customUrl,
+            (gltf) => {
+              if (!isCancelled) {
+                setLoadingProgress(100);
+                onModelLoaded(gltf.scene, customUrl);
+              }
+            },
+            (xhr) => {
+              if (xhr.lengthComputable && xhr.total > 0 && !isCancelled) {
+                setLoadingProgress(Math.min(95, Math.round((xhr.loaded / xhr.total) * 100)));
+              }
+            },
+            (err) => {
+              console.warn('[ModelLoader] Custom model load error, using fallback:', err);
+              loadFallbackModel();
+            }
+          );
+          return;
+        } else if (lower.includes('.fbx')) {
+          loadDirectFbx(customUrl);
+          return;
+        }
+      }
+
+      // 1. Instant Memory Cache Check: If model was previously loaded, load in 0ms!
+      if (globalCachedModel) {
+        console.log('[ModelLoader] Instant memory cache hit! Mounting pre-parsed avatar in 0ms');
+        try {
+          const cloned = SkeletonUtils.clone(globalCachedModel);
+          onModelLoaded(cloned, globalCachedSource || 'memory_cache');
+          return;
+        } catch (cloneErr) {
+          console.warn('[ModelLoader] Memory clone fallback:', cloneErr);
+        }
+      }
+
+      // 2. High-speed GLB check: If pre-converted mans.glb exists, load in ~100ms!
+      try {
+        setLoadingStatus('Checking optimized 3D model...');
+        setLoadingProgress(15);
+        const glbCheck = await fetch('/api/avatar-model?format=glb', { method: 'HEAD' });
+        if (glbCheck.ok && !isCancelled) {
+          console.log('[ModelLoader] Optimized mans.glb found! Loading high-speed glTF...');
+          setLoadingStatus('Loading optimized avatar...');
+          setLoadingProgress(45);
+          loader.load(
+            '/api/avatar-model?format=glb',
+            (gltf) => {
+              if (!isCancelled) {
+                setLoadingProgress(100);
+                onModelLoaded(gltf.scene, 'mans.glb');
+              }
+            },
+            (xhr) => {
+              if (xhr.lengthComputable && xhr.total > 0 && !isCancelled) {
+                setLoadingProgress(Math.min(95, Math.round((xhr.loaded / xhr.total) * 100)));
+              }
+            },
+            (err) => {
+              console.warn('[ModelLoader] glb load warning, trying stream fbx...', err);
+              loadDirectFbx();
+            }
+          );
+          return;
+        }
+      } catch (err) {
+        console.warn('[ModelLoader] GLB check warning:', err);
+      }
+
+      // 3. Progressive stream download of FBX with event-loop yielding
+      loadDirectFbx();
+    };
+
+    // Kick off model loading
+    startModelLoading();
+
+    // Reusable temp quaternions for 0-allocation MoCap frame slerp
+    const _tempQ0 = new THREE.Quaternion();
+    const _tempQ1 = new THREE.Quaternion();
 
     // ── 4. 60 FPS Render & Smooth Lerp Loop ──────────────────────────────────
     const animate = () => {
       raf = requestAnimationFrame(animate);
+      if (!isVisibleRef.current) {
+        return; // Consumes 0 CPU and 0 GPU while hidden!
+      }
       const now = performance.now();
       const delta = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
@@ -1056,6 +1444,13 @@ export function AvatarModel({
           activeMocapState = null;
           activeSignNameRef.current = null;
           setActiveSignName(null);
+          // Restore all bones to rest quaternions so they never get stuck on final frame
+          for (const [bName, bObj] of boneMap.entries()) {
+            const initQ = initialBoneQuaternions.get(bName);
+            if (initQ) {
+              bObj.quaternion.copy(initQ);
+            }
+          }
           if (onSignCompleteRef.current) onSignCompleteRef.current(finishedWord);
         } else {
           const frameFloat = (elapsed / duration) * (totalFrames - 1);
@@ -1073,10 +1468,10 @@ export function AvatarModel({
               const q0Arr = f0.bones[boneName];
               const q1Arr = f1.bones[boneName];
               if (bone && q0Arr && q1Arr) {
-                const q0 = new THREE.Quaternion(q0Arr[0], q0Arr[1], q0Arr[2], q0Arr[3]);
-                const q1 = new THREE.Quaternion(q1Arr[0], q1Arr[1], q1Arr[2], q1Arr[3]);
-                q0.slerp(q1, alpha);
-                bone.quaternion.slerp(q0, 0.45);
+                _tempQ0.set(q0Arr[0], q0Arr[1], q0Arr[2], q0Arr[3]);
+                _tempQ1.set(q1Arr[0], q1Arr[1], q1Arr[2], q1Arr[3]);
+                _tempQ0.slerp(_tempQ1, alpha);
+                bone.quaternion.slerp(_tempQ0, 0.45);
               }
             });
           }
@@ -1122,8 +1517,8 @@ export function AvatarModel({
           currentTargets['Spine1'] = [Math.sin(idleClock) * 0.015, 0, 0];
         }
 
-        // Live Hand Angle Logging (Throttled to every 600ms during signing or manual override)
-        if (currentSignState || manualOverrideRef.current) {
+        // Live Hand Angle Logging (Silent by default; only logs if window.__DEBUG_HAND_ANGLES__ === true)
+        if ((currentSignState || manualOverrideRef.current) && typeof window !== 'undefined' && (window as any).__DEBUG_HAND_ANGLES__) {
           if (now - lastHandAngleLogTime > 600) {
             lastHandAngleLogTime = now;
             const desc = currentSignState
@@ -1313,6 +1708,7 @@ export function AvatarModel({
     ro.observe(container);
 
     return () => {
+      isCancelled = true;
       cancelAnimationFrame(raf);
       ro.disconnect();
       if (typeof window !== 'undefined') {
@@ -1343,13 +1739,19 @@ export function AvatarModel({
 
       {/* Loading & Error States */}
       {(isLoading || loadError) && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950 text-slate-300">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/90 backdrop-blur-sm text-slate-300 z-30">
           {isLoading ? (
             <>
               <div className="w-10 h-10 rounded-full border-2 border-orange-500/20 border-t-orange-500 animate-spin" />
-              <div className="text-center">
-                <p className="text-xs font-semibold">Loading 3D Sign Language Avatar...</p>
-                <p className="text-[10px] text-slate-500 mt-1">{loadingProgress}%</p>
+              <div className="text-center px-4">
+                <p className="text-xs font-semibold text-slate-200">{loadingStatus}</p>
+                <div className="w-40 h-1.5 bg-slate-800 rounded-full mx-auto mt-2.5 overflow-hidden">
+                  <div
+                    className="h-full bg-orange-500 transition-all duration-300 rounded-full"
+                    style={{ width: `${Math.max(5, loadingProgress)}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1 font-mono">{loadingProgress}%</p>
               </div>
             </>
           ) : (

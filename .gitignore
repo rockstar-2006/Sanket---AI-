@@ -40,6 +40,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Python build & local tensor caches
+__pycache__/
+*.pyc
+*.pt
+*.pth
+
 Dataset/
 letter dataset/
 *.parquet

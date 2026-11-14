@@ -1,3 +1,4 @@
+// Sanket AI Next.js App Root Layout
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans, Inter, Dancing_Script } from 'next/font/google';
 import './globals.css';
@@ -8,6 +9,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
   variable: '--font-heading',
   weight: ['400', '500', '600', '700', '800'],
   display: 'swap',
+  fallback: ['system-ui', 'sans-serif'],
 });
 
 const inter = Inter({
@@ -15,6 +17,7 @@ const inter = Inter({
   variable: '--font-body',
   weight: ['400', '500', '600', '700'],
   display: 'swap',
+  fallback: ['system-ui', 'sans-serif'],
 });
 
 const dancingScript = Dancing_Script({
@@ -22,6 +25,7 @@ const dancingScript = Dancing_Script({
   variable: '--font-cursive',
   weight: ['500', '600', '700'],
   display: 'swap',
+  fallback: ['cursive', 'sans-serif'],
 });
 
 export const metadata: Metadata = {

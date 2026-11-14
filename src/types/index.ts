@@ -84,3 +84,14 @@ export interface MediaToggleState {
   isScreenSharing: boolean;
   isHandRaised: boolean;
 }
+
+export function normalizeRoomCode(val: string): string {
+  const trimmed = decodeURIComponent(String(val || '')).trim();
+  if (!trimmed) return '';
+  if (trimmed.includes('/')) {
+    const parts = trimmed.split('?')[0].split('/');
+    const lastPart = parts.filter(Boolean).pop() || '';
+    return lastPart.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  }
+  return trimmed.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+}

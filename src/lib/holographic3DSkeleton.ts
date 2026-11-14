@@ -417,7 +417,7 @@ export class Holographic3DSkeleton {
     const face = frameData.faceLandmarks;
 
     // ─── 1. Pose Body Limbs & Joints ──────────────────────────────────────────
-    if (pose && pose.length >= 25) {
+    if (pose && pose.length >= 17) {
       // Depth anchors for hands & head
       const rightWristZ = pose[16]?.z ?? 0;
       const leftWristZ = pose[15]?.z ?? 0;
@@ -450,8 +450,8 @@ export class Holographic3DSkeleton {
       // Shoulders & Pelvis midpoints for Neck & Spine
       const p11 = pose[11];
       const p12 = pose[12];
-      const p23 = pose[23];
-      const p24 = pose[24];
+      const p23 = pose[23] || { x: 0.56, y: 0.68, z: 0.0 };
+      const p24 = pose[24] || { x: 0.44, y: 0.68, z: 0.0 };
       const pNose = pose[0];
 
       if (p11 && p12 && p23 && p24) {
@@ -615,7 +615,7 @@ export class Holographic3DSkeleton {
           const dxR = vJointsR[0].x - vWristR.x;
           const dyR = vJointsR[0].y - vWristR.y;
           const dist2DR = Math.sqrt(dxR * dxR + dyR * dyR);
-          if (dist2DR > 0.28) {
+          if (dist2DR > 0.45) {
             // Hand is detached from forearm (e.g. arm lowered to side, ghost hand in stomach)
             handValidR = false;
             activeRH = null;
@@ -702,7 +702,7 @@ export class Holographic3DSkeleton {
         let handValidL = true;
         if (vWristL) {
           const wristDistL = vJointsL[0].distanceTo(vWristL);
-          if (wristDistL > 0.28) {
+          if (wristDistL > 0.45) {
             // Hand is detached from forearm, drop it!
             handValidL = false;
             activeLH = null;

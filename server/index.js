@@ -7,11 +7,46 @@ const dev = process.argv.includes('--dev');
 const hostname = '0.0.0.0';
 const port = Number(process.env.PORT || 3000);
 
+const fs = require('fs');
+const path = require('path');
+
+// Auto-cleanup conflicting duplicate dynamic route slug ('roomCode' !== 'roomId')
+function cleanDuplicateSlugs(dir) {
+  if (!fs.existsSync(dir)) return;
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === '[roomCode]') {
+          console.log('[Auto-Cleanup] Found and removing duplicate slug folder:', fullPath);
+          fs.rmSync(fullPath, { recursive: true, force: true });
+        } else {
+          cleanDuplicateSlugs(fullPath);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Auto-Cleanup] Scan error:', err);
+  }
+}
+
+cleanDuplicateSlugs(path.join(__dirname, '..', 'src', 'app'));
+
+// Next.js application setup
+
 const nextApp = next({ dev, hostname, port });
 const handle = nextApp.getRequestHandler();
 
 // Map of roomId -> Map(socketId => participantData)
 const rooms = new Map();
+
+function normalizeRoomCode(val) {
+  return decodeURIComponent(String(val || ''))
+    .trim()
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toUpperCase();
+}
 
 function handleUserDisconnect(io, socket, roomId) {
   if (!roomId || !rooms.has(roomId)) {
@@ -35,10 +70,32 @@ function handleUserDisconnect(io, socket, roomId) {
   io.to(roomId).emit('user-disconnected', {
     socketId: socket.id,
   });
+  io.to(roomId).emit('room-participants', {
+    count: roomParticipants.size,
+    participants: Array.from(roomParticipants.values()),
+  });
   console.log(`[Socket.IO] User ${socket.id} left room ${roomId}. Remaining: ${roomParticipants.size}`);
 }
 
 nextApp.prepare().then(() => {
+  // Synchronize D:/Matri/model/mans.fbx to public/model/mans.fbx on server boot
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const directModel = path.join(__dirname, '..', 'model', 'mans.fbx');
+    const destDir = path.join(__dirname, '..', 'public', 'model');
+    if (fs.existsSync(directModel)) {
+      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+      const dest = path.join(destDir, 'mans.fbx');
+      if (!fs.existsSync(dest) || fs.statSync(dest).size !== fs.statSync(directModel).size) {
+        fs.copyFileSync(directModel, dest);
+        console.log(`[Startup-Sync] Synced D:/Matri/model/mans.fbx -> public/model/mans.fbx (${(fs.statSync(dest).size / 1024 / 1024).toFixed(2)} MB)`);
+      }
+    }
+  } catch (err) {
+    console.warn('[Startup-Sync Warning]', err);
+  }
+
   const server = http.createServer(async (req, res) => {
     const parsedUrl = parse(req.url, true);
 
@@ -59,27 +116,30 @@ nextApp.prepare().then(() => {
       const p4 = path.join('C:/Users/User/Downloads', rel);
 
       let target = null;
-      if (fs.existsSync(p1)) target = p1;
-      else if (fs.existsSync(p2)) target = p2;
-      else if ((rel === 'mans.fbx' || rel === 'passive_marker_man.fbx') && fs.existsSync(p3)) target = p3;
-      else if (fs.existsSync(p4)) target = p4;
-
-      if (target) {
-        // Auto-copy to public/model/mans.fbx if from downloads
-        if (target === p3) {
+      // Prioritize D:/Matri/model/mans.fbx when requested
+      if (rel === 'mans.fbx') {
+        const directModel = path.join(__dirname, '..', 'model', 'mans.fbx');
+        if (fs.existsSync(directModel)) {
+          target = directModel;
           try {
             const destDir = path.join(__dirname, '..', 'public', 'model');
             if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
             const dest = path.join(destDir, 'mans.fbx');
-            if (!fs.existsSync(dest) || fs.statSync(dest).size !== fs.statSync(p3).size) {
-              fs.copyFileSync(p3, dest);
-              console.log(`[Auto-Sync] Copied passive_marker_man.fbx -> public/model/mans.fbx (${(fs.statSync(dest).size / 1024 / 1024).toFixed(2)} MB)`);
+            if (!fs.existsSync(dest) || fs.statSync(dest).size !== fs.statSync(directModel).size) {
+              fs.copyFileSync(directModel, dest);
+              console.log(`[Auto-Sync] Synced D:/Matri/model/mans.fbx -> public/model/mans.fbx (${(fs.statSync(dest).size / 1024 / 1024).toFixed(2)} MB)`);
             }
           } catch (e) {
-            console.error('[Auto-Sync Error]', e);
+            console.warn('[Sync Notice]', e);
           }
         }
+      }
+      if (!target && fs.existsSync(p2)) target = p2;
+      else if (!target && fs.existsSync(p1)) target = p1;
+      else if (!target && (rel === 'mans.fbx' || rel === 'passive_marker_man.fbx') && fs.existsSync(p3)) target = p3;
+      else if (!target && fs.existsSync(p4)) target = p4;
 
+      if (target) {
         const ext = path.extname(target).toLowerCase();
         const mime = ext === '.fbx' ? 'application/octet-stream' : (ext === '.glb' ? 'model/gltf-binary' : 'application/octet-stream');
         res.setHeader('Content-Type', mime);
@@ -104,7 +164,7 @@ nextApp.prepare().then(() => {
     let currentRoomId = null;
 
     socket.on('join-room', ({ roomId, user }) => {
-      const normalizedRoomId = String(roomId || '').trim().toUpperCase();
+      const normalizedRoomId = normalizeRoomCode(roomId);
       console.log(`[Socket.IO] ${user?.displayName || socket.id} attempting to join room: ${normalizedRoomId}`);
 
       if (!normalizedRoomId) {
@@ -159,6 +219,11 @@ nextApp.prepare().then(() => {
         participant: participantData,
       });
 
+      io.to(normalizedRoomId).emit('room-participants', {
+        count: roomParticipants.size,
+        participants: Array.from(roomParticipants.values()),
+      });
+
       console.log(`[Socket.IO] Room ${normalizedRoomId} total members: ${roomParticipants.size}`);
     });
 
@@ -190,7 +255,7 @@ nextApp.prepare().then(() => {
     });
 
     socket.on('toggle-media', ({ roomId, state }) => {
-      const normalizedRoomId = String(roomId || '').trim().toUpperCase();
+      const normalizedRoomId = normalizeRoomCode(roomId);
       if (normalizedRoomId !== currentRoomId) return;
 
       if (rooms.has(normalizedRoomId)) {
@@ -208,14 +273,35 @@ nextApp.prepare().then(() => {
     });
 
     socket.on('chat-message', ({ roomId, message }) => {
-      const normalizedRoomId = String(roomId || '').trim().toUpperCase();
-      if (normalizedRoomId === currentRoomId) {
-        io.to(normalizedRoomId).emit('chat-message', message);
+      const targetRoom = normalizeRoomCode(roomId || currentRoomId);
+      if (targetRoom) {
+        io.to(targetRoom).emit('chat-message', message);
+      }
+    });
+
+    socket.on('live-transcript', ({ roomId, transcript }) => {
+      const targetRoom = normalizeRoomCode(roomId || currentRoomId);
+      if (targetRoom) {
+        socket.to(targetRoom).emit('live-transcript', { transcript });
+      }
+    });
+
+    socket.on('sign-speech-event', ({ roomId, data }) => {
+      const targetRoom = normalizeRoomCode(roomId || currentRoomId);
+      if (targetRoom) {
+        socket.to(targetRoom).emit('sign-speech-event', data);
+      }
+    });
+
+    socket.on('signer-speech-event', ({ roomId, data }) => {
+      const targetRoom = normalizeRoomCode(roomId || currentRoomId);
+      if (targetRoom) {
+        socket.to(targetRoom).emit('signer-speech-event', data);
       }
     });
 
     socket.on('leave-room', ({ roomId }) => {
-      handleUserDisconnect(io, socket, roomId || currentRoomId);
+      handleUserDisconnect(io, socket, normalizeRoomCode(roomId) || currentRoomId);
       currentRoomId = null;
     });
 

@@ -4,13 +4,13 @@ import { speechToSignOrchestrator } from '@/lib/agents/speechToSignAgent';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { text } = body;
+    const { text, apiKey, model, context } = body;
 
     if (!text || typeof text !== 'string' || !text.trim()) {
       return NextResponse.json({ error: 'Text prompt or speech transcript is required.' }, { status: 400 });
     }
 
-    const result = await speechToSignOrchestrator.processInput(text);
+    const result = await speechToSignOrchestrator.processInput(text, { apiKey, model, context });
     return NextResponse.json({ success: true, ...result });
   } catch (error: any) {
     console.error('[API /api/agents/speech-to-sign] Error:', error);

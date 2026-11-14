@@ -356,7 +356,7 @@ export const ISL_LETTER_CONFIGS: Record<string, LetterPoseConfig> = {
 
 // ─── Procedural Hand Geometry Builder ────────────────────────────────────────
 // Builds 21 MediaPipe hand landmarks with authentic anatomical spatial alignment.
-function buildHandLandmarks(
+export function buildHandLandmarks(
   spec: HandPoseSpec,
   wrist: Landmark3D,
   isLeftHand: boolean,

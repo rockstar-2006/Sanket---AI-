@@ -1,5 +1,4 @@
 'use client';
-
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { Holographic3DSkeleton } from '@/lib/holographic3DSkeleton';
@@ -51,9 +50,9 @@ export function HologramParquetPlayer({
     const scene = new THREE.Scene();
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
-    camera.position.set(0, 1.25, 1.55);
-    camera.lookAt(0, 1.15, 0);
+    const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 100);
+    camera.position.set(0, 1.05, 2.3);
+    camera.lookAt(0, 1.05, 0);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });

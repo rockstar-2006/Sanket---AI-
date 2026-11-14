@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node -e \"const fs=require('fs'),p=require('path');const d=p.join('src','app','consultation','join','[roomCode]');if(fs.existsSync(d))fs.rmSync(d,{recursive:true,force:true});\"",
+    "prebuild": "node -e \"const fs=require('fs'),p=require('path');const d=p.join('src','app','consultation','join','[roomCode]');if(fs.existsSync(d))fs.rmSync(d,{recursive:true,force:true});\"",
     "dev": "node server/index.js --dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "clean": "node -e \"const fs=require('fs');['.next'].forEach(d=>{if(fs.existsSync(d))fs.rmSync(d,{recursive:true,force:true})});\"",
     "server": "node server/index.js",
     "dev:all": "npm run dev"
   },

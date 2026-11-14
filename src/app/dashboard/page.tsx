@@ -117,6 +117,14 @@ export default function DashboardPage() {
                 </Link>
 
                 <Link
+                  href="/consultation/join/ROOM-MAIN"
+                  className="w-full sm:w-auto px-6 py-3.5 rounded-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-sm shadow-lg shadow-cyan-600/25 transition flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Accessible ISL Meeting</span>
+                </Link>
+
+                <Link
                   href="/test-avatar"
                   className="w-full sm:w-auto px-6 py-3.5 rounded-full bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm shadow-lg shadow-orange-500/25 transition flex items-center justify-center gap-2"
                 >

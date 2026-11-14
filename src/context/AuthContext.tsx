@@ -32,24 +32,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
+      setLoading(false);
+
       if (firebaseUser) {
-        try {
-          const userProfile = await createOrUpdateUserProfile({
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            displayName: firebaseUser.displayName,
-            photoURL: firebaseUser.photoURL,
-          });
-          setProfile(userProfile);
-        } catch (err) {
-          console.error("Failed to load user profile:", err);
-        }
+        createOrUpdateUserProfile({
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName,
+          photoURL: firebaseUser.photoURL,
+        })
+          .then((userProfile) => setProfile(userProfile))
+          .catch((err) => console.warn("Failed to load user profile in background:", err));
       } else {
         setProfile(null);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();

@@ -69,17 +69,13 @@ export default function LandingPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   const handleStartSession = () => {
-    if (user) {
-      router.push('/dashboard');
-    } else {
-      router.push('/auth/login');
-    }
+    router.push('/consultation/create');
   };
 
   const handleQuickJoin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickRoomCode.trim()) return;
-    router.push(`/consultation/join/${quickRoomCode.trim().toUpperCase()}`);
+    router.push(`/room/${quickRoomCode.trim().toUpperCase()}`);
   };
 
   const toggleFaq = (index: number) => {
