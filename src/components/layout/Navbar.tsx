@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { Sparkles, ArrowRight, User, LogOut, Video, Menu, X } from 'lucide-react';
+import { Sparkles, ArrowRight, User, LogOut, Video, Menu, X, Download } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const { user, profile, logout } = useAuth();
@@ -42,6 +42,9 @@ export const Navbar: React.FC = () => {
           <Link href="/test-avatar" className="text-orange-400 hover:text-orange-300 font-extrabold transition flex items-center gap-1">
             <span>3D Sign Studio</span>
           </Link>
+          <Link href="/download" className="text-slate-300 hover:text-white transition flex items-center gap-1">
+            <span>Download</span>
+          </Link>
           {user && (
             <Link href="/dashboard" className="hover:text-orange-400 transition">
               Dashboard
@@ -51,6 +54,19 @@ export const Navbar: React.FC = () => {
 
         {/* Right Action Buttons */}
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('open-pwa-install'));
+              }
+            }}
+            title="Install Sanket AI as Desktop or Mobile App"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 border border-orange-500/30 transition shadow-sm"
+          >
+            <Download className="w-3.5 h-3.5 text-orange-400" />
+            <span>Install App</span>
+          </button>
+
           <Link
             href="/consultation/join"
             className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs font-bold text-slate-200 hover:text-white hover:bg-slate-800 border border-slate-700/80 transition"
@@ -133,6 +149,10 @@ export const Navbar: React.FC = () => {
             <Link onClick={() => setMobileMenuOpen(false)} href="/#how-it-works" className="px-3 py-2 rounded-xl hover:bg-slate-800 transition">
               How It Works
             </Link>
+            <Link onClick={() => setMobileMenuOpen(false)} href="/download" className="px-3 py-2 rounded-xl text-orange-400 font-bold hover:bg-slate-800 transition flex items-center justify-between">
+              <span>Download Desktop & Mobile App</span>
+              <span className="text-[10px] uppercase font-black px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300">New</span>
+            </Link>
             <Link onClick={() => setMobileMenuOpen(false)} href="/#faq" className="px-3 py-2 rounded-xl hover:bg-slate-800 transition">
               Help
             </Link>
@@ -144,6 +164,23 @@ export const Navbar: React.FC = () => {
               <span>Start New Call</span>
               <Sparkles className="w-3.5 h-3.5 text-orange-400" />
             </Link>
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new Event('open-pwa-install'));
+                }
+              }}
+              className="w-full text-left px-3 py-2.5 rounded-xl bg-gradient-to-r from-orange-500/20 to-amber-500/20 border border-orange-500/40 text-orange-300 font-bold transition flex items-center justify-between shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                <Download className="w-4 h-4 text-orange-400" />
+                <span>Install Sanket AI App</span>
+              </div>
+              <span className="text-[10px] uppercase font-black px-1.5 py-0.5 rounded bg-orange-500/30 text-orange-200">
+                PWA
+              </span>
+            </button>
             {user && (
               <Link onClick={() => setMobileMenuOpen(false)} href="/dashboard" className="px-3 py-2 rounded-xl bg-slate-800/60 text-slate-200 font-bold transition">
                 Dashboard

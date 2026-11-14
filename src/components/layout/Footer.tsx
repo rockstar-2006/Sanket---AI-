@@ -22,6 +22,7 @@ export const Footer: React.FC = () => {
           <div>
             <h4 className="text-slate-900 font-bold text-sm mb-4">Meeting Solutions</h4>
             <ul className="space-y-2.5 text-sm text-slate-600">
+              <li><Link href="/download" className="text-orange-600 font-bold hover:underline flex items-center gap-1.5"><span>⚡ Download Desktop & Mobile App</span></Link></li>
               <li><Link href="/#solutions" className="hover:text-orange-500 transition">Job & Technical Interviews</Link></li>
               <li><Link href="/#solutions" className="hover:text-orange-500 transition">Telemedicine Consultations</Link></li>
               <li><Link href="/#solutions" className="hover:text-orange-500 transition">Academic Viva & Campus Placements</Link></li>
