@@ -80,6 +80,9 @@ function buildWordIndex() {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
+    if (searchParams.get('refresh') === 'true') {
+      serverFrameCache.clear();
+    }
     const action = searchParams.get('action') || searchParams.get('list');
 
     // If listing words and files
@@ -179,22 +182,27 @@ export async function GET(req: NextRequest) {
     const wordParam = searchParams.get('word');
     const letterParam = searchParams.get('letter');
 
+    // Clean word parameter (remove non-alphanumeric)
+    const cleanWord = wordParam ? wordParam.trim().toLowerCase().replace(/[^a-z0-9]/g, '') : null;
+
     const cacheKey = letterParam
       ? `letter:${letterParam.trim().toUpperCase()}`
-      : wordParam
-      ? `word:${wordParam.trim().toLowerCase()}`
+      : cleanWord
+      ? `word:${cleanWord}`
       : `file:${fileParam || ''}`;
 
-    if (serverFrameCache.has(cacheKey)) {
+    if (serverFrameCache.has(cacheKey) && searchParams.get('refresh') !== 'true') {
       return NextResponse.json(serverFrameCache.get(cacheKey));
     }
 
     // Direct A-Z Fingerspelling query
-    if (letterParam || (wordParam && wordParam.trim().length === 1)) {
-      const char = (letterParam || wordParam || 'A').trim().toUpperCase().charAt(0);
-      const letterFrames = generateFingerspellFrames(char, 28);
+    if (letterParam || (cleanWord && cleanWord.length === 1)) {
+      const char = (letterParam || cleanWord || 'A').trim().toUpperCase().charAt(0);
+      const letterFrames = generateFingerspellFrames(char, 48); // 48 frames = 1.6s calm, clear demonstration
       const payload = {
         file: `isl_fingerspell_${char}`,
+        word: char,
+        label: char,
         letter: char,
         isFingerspelling: true,
         totalFrames: letterFrames.length,
@@ -214,9 +222,11 @@ export async function GET(req: NextRequest) {
 
     // Helper to generate verified ISL gesture frames response
     const buildGestureResponse = (word: string) => {
-      const gFrames = generateISLGestureFrames(word, 36);
+      const gFrames = generateISLGestureFrames(word, 72); // 72 frames = 2.4s calm, clear signing
       return {
         file: `isl_gesture_${word.toLowerCase()}`,
+        word: word.toUpperCase(),
+        label: word.toUpperCase(),
         totalFrames: gFrames.length,
         durationSec: Math.round(((gFrames.length - 1) / 30.0) * 100) / 100,
         frames: gFrames.map((f, i) => ({
@@ -230,12 +240,11 @@ export async function GET(req: NextRequest) {
       };
     };
 
-    // If word parameter passed, auto-resolve to its first parquet take
-    if (wordParam && !fileParam) {
-      let target = wordParam.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    // If word parameter passed, prioritize exact verified sign
+    if (cleanWord && !fileParam) {
       const SYNONYMS: Record<string, string> = {
-        'yes': 'good',
-        'no': 'bad',
+        'yes': 'yes',
+        'no': 'no',
         'hi': 'hello',
         'thanks': 'thankyou',
         'sleep': 'goodnight',
@@ -246,16 +255,31 @@ export async function GET(req: NextRequest) {
         'drink': 'water',
         'iloveyou': 'love',
       };
-      if (SYNONYMS[target]) {
-        target = SYNONYMS[target];
+      const resolvedWord = SYNONYMS[cleanWord] || cleanWord;
+
+      // Check if we have an authentic gesture generator for this sign
+      const KNOWN_GESTURES = new Set([
+        'hello', 'hi', 'thankyou', 'goodmorning', 'goodafternoon', 'goodevening',
+        'goodnight', 'howareyou', 'alright', 'namaste', 'pleased', 'doctor',
+        'hospital', 'yes', 'no', 'car', 'drive', 'house', 'help', 'book',
+        'water', 'food', 'medicine', 'pain', 'fever', 'emergency', 'time', 'family'
+      ]);
+
+      // If it's one of our core vocabulary signs, always return the verified ISL gesture
+      // This prevents corrupt/collapsed raw parquet takes from showing caterpillars or wrong signs
+      if (KNOWN_GESTURES.has(resolvedWord)) {
+        const payload = buildGestureResponse(resolvedWord);
+        serverFrameCache.set(cacheKey, payload);
+        return NextResponse.json(payload);
       }
+
       buildWordIndex();
 
-      let matchedFile = wordToFileIndex.get(target);
+      let matchedFile = wordToFileIndex.get(resolvedWord);
       if (!matchedFile) {
-        // Try fuzzy or partial matches against indexed words
+        // Strict match against indexed words
         for (const [k, v] of wordToFileIndex.entries()) {
-          if (k === target || target.includes(k) || k.includes(target)) {
+          if (k === resolvedWord) {
             matchedFile = v;
             break;
           }
@@ -265,7 +289,7 @@ export async function GET(req: NextRequest) {
 
       // If word is not found in dataset folders, synthesize authentic ISL gesture frames
       if (!fileParam) {
-        const payload = buildGestureResponse(wordParam);
+        const payload = buildGestureResponse(resolvedWord);
         serverFrameCache.set(cacheKey, payload);
         return NextResponse.json(payload);
       }
@@ -354,6 +378,24 @@ export async function GET(req: NextRequest) {
     if (!frames.length || !frames.some(f => f.poseLandmarks || f.rightHandLandmarks || f.leftHandLandmarks)) {
       const fallbackPayload = buildGestureResponse(wordParam || safeRelPath);
       return NextResponse.json(fallbackPayload);
+    }
+
+    // Auto-enrich any missing hand with verified anatomical ISL ground-truth
+    if (wordParam) {
+      try {
+        const gestureBaseline = generateISLGestureFrames(wordParam, frames.length);
+        frames.forEach((f, idx) => {
+          const gFrame = gestureBaseline[idx] || gestureBaseline[0];
+          if (!f.leftHandLandmarks && gFrame?.leftHandLandmarks) {
+            f.leftHandLandmarks = gFrame.leftHandLandmarks;
+          }
+          if (!f.rightHandLandmarks && gFrame?.rightHandLandmarks) {
+            f.rightHandLandmarks = gFrame.rightHandLandmarks;
+          }
+        });
+      } catch (enrichErr) {
+        console.warn('Could not enrich hand gesture:', enrichErr);
+      }
     }
 
     const responsePayload = {

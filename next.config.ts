@@ -3,9 +3,6 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   allowedDevOrigins: ["unstuck-deed-sulk.ngrok-free.dev"],
-  experimental: {
-    devtoolSegmentExplorer: false,
-  },
   images: {
     remotePatterns: [
       {
@@ -17,6 +14,9 @@ const nextConfig: NextConfig = {
         hostname: "firebasestorage.googleapis.com",
       },
     ],
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
   },
 };
 

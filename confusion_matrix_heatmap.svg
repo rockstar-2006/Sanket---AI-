@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500" style="background-color: #020617; font-family: ui-monospace, monospace;">
+<text x="250.0" y="30" fill="#f8fafc" font-size="16" font-weight="bold" text-anchor="middle">Sanket AI • Confusion Matrix Heatmap (N=75)</text>
+<text x="250.0" y="50" fill="#94a3b8" font-size="11" text-anchor="middle">Rows: Ground Truth &bull; Columns: Predicted Output</text>
+<text x="122.5" y="68" fill="#94a3b8" font-size="10" font-weight="bold" text-anchor="middle">DOCT</text>
+<text x="167.5" y="68" fill="#94a3b8" font-size="10" font-weight="bold" text-anchor="middle">HOSP</text>
+<text x="212.5" y="68" fill="#94a3b8" font-size="10" font-weight="bold" text-anchor="middle">MEDI</text>
+<text x="257.5" y="68" fill="#94a3b8" font-size="10" font-weight="bold" text-anchor="middle">PAIN</text>
+<text x="302.5" y="68" fill="#94a3b8" font-size="10" font-weight="bold" text-anchor="middle">FEVE</text>
+<text x="347.5" y="68" fill="#94a3b8" font-size="10" font-weight="bold" text-anchor="middle">HELL</text>
+<text x="392.5" y="68" fill="#94a3b8" font-size="10" font-weight="bold" text-anchor="middle">THAN</text>
+<text x="437.5" y="68" fill="#94a3b8" font-size="10" font-weight="bold" text-anchor="middle">PLEA</text>
+<text x="85" y="106.5" fill="#cbd5e1" font-size="10" font-weight="bold" text-anchor="end">DOCTOR</text>
+<rect x="100" y="80" width="43" height="43" rx="4" fill="#065f46" />
+<text x="121.5" y="106.5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">4</text>
+<rect x="145" y="80" width="43" height="43" rx="4" fill="#b45309" />
+<text x="166.5" y="106.5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">2</text>
+<rect x="190" y="80" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="211.5" y="106.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="235" y="80" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="256.5" y="106.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="280" y="80" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="301.5" y="106.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="325" y="80" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="346.5" y="106.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="370" y="80" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="391.5" y="106.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="415" y="80" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="436.5" y="106.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<text x="85" y="151.5" fill="#cbd5e1" font-size="10" font-weight="bold" text-anchor="end">HOSPITAL</text>
+<rect x="100" y="125" width="43" height="43" rx="4" fill="#b45309" />
+<text x="121.5" y="151.5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">1</text>
+<rect x="145" y="125" width="43" height="43" rx="4" fill="#065f46" />
+<text x="166.5" y="151.5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">5</text>
+<rect x="190" y="125" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="211.5" y="151.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="235" y="125" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="256.5" y="151.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="280" y="125" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="301.5" y="151.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="325" y="125" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="346.5" y="151.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="370" y="125" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="391.5" y="151.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="415" y="125" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="436.5" y="151.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<text x="85" y="196.5" fill="#cbd5e1" font-size="10" font-weight="bold" text-anchor="end">MEDICINE</text>
+<rect x="100" y="170" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="121.5" y="196.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="145" y="170" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="166.5" y="196.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="190" y="170" width="43" height="43" rx="4" fill="#065f46" />
+<text x="211.5" y="196.5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">3</text>
+<rect x="235" y="170" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="256.5" y="196.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="280" y="170" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="301.5" y="196.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="325" y="170" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="346.5" y="196.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="370" y="170" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="391.5" y="196.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="415" y="170" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="436.5" y="196.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<text x="85" y="241.5" fill="#cbd5e1" font-size="10" font-weight="bold" text-anchor="end">PAIN</text>
+<rect x="100" y="215" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="121.5" y="241.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="145" y="215" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="166.5" y="241.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="190" y="215" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="211.5" y="241.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="235" y="215" width="43" height="43" rx="4" fill="#065f46" />
+<text x="256.5" y="241.5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">4</text>
+<rect x="280" y="215" width="43" height="43" rx="4" fill="#b45309" />
+<text x="301.5" y="241.5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">2</text>
+<rect x="325" y="215" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="346.5" y="241.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="370" y="215" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="391.5" y="241.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="415" y="215" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="436.5" y="241.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<text x="85" y="286.5" fill="#cbd5e1" font-size="10" font-weight="bold" text-anchor="end">FEVER</text>
+<rect x="100" y="260" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="121.5" y="286.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="145" y="260" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="166.5" y="286.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="190" y="260" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="211.5" y="286.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="235" y="260" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="256.5" y="286.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="280" y="260" width="43" height="43" rx="4" fill="#065f46" />
+<text x="301.5" y="286.5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">3</text>
+<rect x="325" y="260" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="346.5" y="286.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="370" y="260" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="391.5" y="286.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="415" y="260" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="436.5" y="286.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<text x="85" y="331.5" fill="#cbd5e1" font-size="10" font-weight="bold" text-anchor="end">HELLO</text>
+<rect x="100" y="305" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="121.5" y="331.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="145" y="305" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="166.5" y="331.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="190" y="305" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="211.5" y="331.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="235" y="305" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="256.5" y="331.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="280" y="305" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="301.5" y="331.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="325" y="305" width="43" height="43" rx="4" fill="#065f46" />
+<text x="346.5" y="331.5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">3</text>
+<rect x="370" y="305" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="391.5" y="331.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="415" y="305" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="436.5" y="331.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<text x="85" y="376.5" fill="#cbd5e1" font-size="10" font-weight="bold" text-anchor="end">THANKYOU</text>
+<rect x="100" y="350" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="121.5" y="376.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="145" y="350" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="166.5" y="376.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="190" y="350" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="211.5" y="376.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="235" y="350" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="256.5" y="376.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="280" y="350" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="301.5" y="376.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="325" y="350" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="346.5" y="376.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="370" y="350" width="43" height="43" rx="4" fill="#065f46" />
+<text x="391.5" y="376.5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">4</text>
+<rect x="415" y="350" width="43" height="43" rx="4" fill="#b45309" />
+<text x="436.5" y="376.5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">2</text>
+<text x="85" y="421.5" fill="#cbd5e1" font-size="10" font-weight="bold" text-anchor="end">PLEASE</text>
+<rect x="100" y="395" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="121.5" y="421.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="145" y="395" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="166.5" y="421.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="190" y="395" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="211.5" y="421.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="235" y="395" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="256.5" y="421.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="280" y="395" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="301.5" y="421.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="325" y="395" width="43" height="43" rx="4" fill="#0f172a" />
+<text x="346.5" y="421.5" fill="#475569" font-size="11" font-weight="bold" text-anchor="middle">0</text>
+<rect x="370" y="395" width="43" height="43" rx="4" fill="#b45309" />
+<text x="391.5" y="421.5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">1</text>
+<rect x="415" y="395" width="43" height="43" rx="4" fill="#065f46" />
+<text x="436.5" y="421.5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">5</text>
+<text x="250.0" y="485" fill="#10b981" font-size="11" font-weight="bold" text-anchor="middle">&bull; Diagonal Accuracy: 93.1% &bull; Top Confusion: DOCTOR &harr; HOSPITAL &bull;</text>
+</svg>

@@ -153,7 +153,7 @@ export function evaluateFramingQuality(hands: HandLandmarkResult[]): FramingStat
 
 // ─── Gesture Kinematics Classifier ────────────────────────────────────────────
 
-export type RecognitionMode = 'word' | 'fingerspell';
+export type RecognitionMode = 'word' | 'fingerspell' | 'hybrid';
 
 export type SwitchSignId = 'INDEX_TOUCH' | 'DOUBLE_THUMBS_UP' | 'OPEN_PALM_HOLD' | 'NAMASTE_TOUCH';
 
@@ -338,10 +338,10 @@ export function classifyHandPostures(
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SECTION 1: ISL WHOLE WORDS & DAILY GESTURES
-  // Evaluated ONLY in 'word' mode
+  // Evaluated in 'word' and 'hybrid' modes
   // ═══════════════════════════════════════════════════════════════════════════
 
-  if (mode === 'word') {
+  if (mode === 'word' || mode === 'hybrid') {
     // 1. Dual-Hand Gestures
     if (hands.length >= 2) {
       const handA = hands[0].landmarks;
@@ -496,8 +496,8 @@ export function classifyHandPostures(
     }
 
     // 2. Single-Hand HELLO: Forehead / Brow Salute OR Temple Wave (Authentic ISL Greeting)
-    const isNearForeheadOrTemple = (indexTip.y < 0.48 || middleTip.y < 0.48) && wrist.y < 0.70;
-    const isExtendedSalute = indexExt > 0.55 && middleExt > 0.55 && ringExt > 0.45 && pinkyExt > 0.40 && dist3D(wrist, indexTip) > 0.10;
+    const isNearForeheadOrTemple = (indexTip.y < 0.56 || middleTip.y < 0.56) && wrist.y < 0.78;
+    const isExtendedSalute = indexExt > 0.42 && middleExt > 0.42 && dist3D(wrist, indexTip) > 0.08;
     if (isNearForeheadOrTemple && isExtendedSalute) {
       return {
         token: 'HELLO',
@@ -510,7 +510,7 @@ export function classifyHandPostures(
 
     // 2b. Single-Hand GOOD NIGHT: Tilted flat hand beside cheek/ear (sleep gesture)
     if (indexExt > 0.38 && middleExt > 0.38 && indexTip.y < 0.52 && wrist.y < 0.70) {
-      if (Math.abs(indexTip.x - 0.50) > 0.08 || Math.abs(indexTip.x - wrist.x) > 0.04) {
+      if (Math.abs(indexTip.x - 0.50) > 0.12 && Math.abs(indexTip.x - wrist.x) > 0.06) {
         return {
           token: 'GOOD NIGHT',
           displayLabel: 'Good Night',
@@ -521,9 +521,9 @@ export function classifyHandPostures(
       }
     }
 
-    // 3. Single-Hand THANK YOU: Flat open hand extending from chin/mouth forward
-    if (indexExt > 0.45 && middleExt > 0.45) {
-      if (indexTip.y >= 0.36 && indexTip.y <= 0.68 && wrist.x >= 0.18 && wrist.x <= 0.82) {
+    // 3. Single-Hand THANK YOU: Flat open hand extending from chin/mouth forward (Authentic ISL/ASL)
+    if (indexExt > 0.50 && middleExt > 0.50 && ringExt > 0.45 && pinkyExt > 0.40) {
+      if (indexTip.y >= 0.20 && indexTip.y <= 0.44 && Math.abs(wrist.x - 0.50) < 0.28) {
         return {
           token: 'THANK YOU',
           displayLabel: 'Thank You',
@@ -577,7 +577,7 @@ export function classifyHandPostures(
 
     // 7. YES / GOOD: Closed fist with thumb pointing straight up
     if (indexExt < 0.38 && middleExt < 0.38 && ringExt < 0.38 && pinkyExt < 0.38) {
-      if (thumbTip.y < indexMcp.y - 0.02) {
+      if (thumbTip.y < indexMcp.y - 0.035) {
         return {
           token: 'YES',
           displayLabel: 'Yes / Good',
@@ -599,8 +599,10 @@ export function classifyHandPostures(
     }
 
     // 9. WAIT / STOP: Flat open palm facing forward at chest level
-    if (indexExt > 0.60 && middleExt > 0.60 && ringExt > 0.60 && pinkyExt > 0.60) {
-      if (wrist.y >= 0.40 && indexTip.y >= 0.22) {
+    if (indexExt > 0.52 && middleExt > 0.52 && ringExt > 0.48 && pinkyExt > 0.42) {
+      const thumbTucked = dist3D(wrist, thumbTip) < 0.11;
+      // If thumb is tucked against palm, defer to Letter B
+      if (!thumbTucked && wrist.y >= 0.38 && indexTip.y >= 0.18) {
         return {
           token: 'WAIT',
           displayLabel: 'Wait / Pause',
@@ -678,12 +680,14 @@ export function classifyHandPostures(
       }
     }
 
-    // In 'word' mode: finished words evaluation
-    return null;
+    // In 'word' mode ONLY: do not evaluate fingerspelling letters
+    if (mode === 'word') {
+      return null;
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // SECTION 2: ISL FINGERSPELLING LETTERS (Only in 'fingerspell' mode)
+  // SECTION 2: ISL FINGERSPELLING LETTERS (Evaluated in 'fingerspell' and 'hybrid' modes)
   // ═══════════════════════════════════════════════════════════════════════════
 
   // Dual-Hand Letters
@@ -824,19 +828,45 @@ export function classifyHandPostures(
     }
   }
 
+  // Letter R: Index and Middle crossed over each other (Check first before U/V/H)
+  if (indexExt > 0.48 && middleExt > 0.48 && ringExt < 0.40 && pinkyExt < 0.40) {
+    const isCrossingOrTouching = indexMiddleDist < 0.038 || Math.abs(indexTip.x - middleTip.x) < 0.025;
+    if (isCrossingOrTouching) {
+      return {
+        token: 'R',
+        displayLabel: 'Letter R',
+        type: 'letter',
+        confidence: 0.94,
+        description: 'Index and middle fingers crossed over each other (Letter R)',
+      };
+    }
+  }
+
+  // Letter H (Single-hand): Index and Middle extended HORIZONTALLY (sideways/forward, not pointing up)
+  const isHorizontalTwoFingers = Math.abs(wrist.y - indexTip.y) < 0.12 && dist3D(wrist, indexTip) > 0.09;
+  if (indexExt > 0.52 && middleExt > 0.52 && ringExt < 0.40 && pinkyExt < 0.40 && isHorizontalTwoFingers) {
+    return {
+      token: 'H',
+      displayLabel: 'Letter H',
+      type: 'letter',
+      confidence: 0.95,
+      description: 'Index and middle fingers extended horizontally sideways (Letter H)',
+    };
+  }
+
   // Letter U: Index and Middle upright together (parallel/touching)
-  if (indexExt > 0.60 && middleExt > 0.60 && ringExt < 0.38 && pinkyExt < 0.38) {
-    if (indexMiddleDist <= 0.042) {
+  if (indexExt > 0.55 && middleExt > 0.55 && ringExt < 0.40 && pinkyExt < 0.40) {
+    if (indexMiddleDist <= 0.046) {
       return {
         token: 'U',
         displayLabel: 'Letter U',
         type: 'letter',
-        confidence: 0.94,
+        confidence: 0.95,
         description: 'Index and middle fingers together upright forming U',
       };
     }
     // Letter V: Index and Middle upright in upright V (separated)
-    if (indexMiddleDist > 0.042) {
+    if (indexMiddleDist > 0.046) {
       return {
         token: 'V',
         displayLabel: 'Letter V',
@@ -845,17 +875,6 @@ export function classifyHandPostures(
         description: 'Index and middle fingers extended in upright V victory sign',
       };
     }
-  }
-
-  // Letter R: Index and Middle crossed over each other
-  if (indexExt > 0.55 && middleExt > 0.55 && ringExt < 0.38 && pinkyExt < 0.38 && indexMiddleDist < 0.032) {
-    return {
-      token: 'R',
-      displayLabel: 'Letter R',
-      type: 'letter',
-      confidence: 0.92,
-      description: 'Index and middle fingers crossed over each other (Letter R)',
-    };
   }
 
   // Letter K: Index upright, middle angled forward
@@ -871,7 +890,7 @@ export function classifyHandPostures(
 
   // Letter Y: Thumb and Pinky extended, other 3 fingers curled into palm
   if (pinkyExt > 0.55 && indexExt < 0.38 && middleExt < 0.38 && ringExt < 0.38) {
-    const thumbExt = dist3D(wrist, thumbTip) > 0.095;
+    const thumbExt = dist3D(wrist, thumbTip) > 0.088;
     if (thumbExt) {
       return {
         token: 'Y',
@@ -884,13 +903,13 @@ export function classifyHandPostures(
   }
 
   // Letter I: Only Pinky finger extended upright, others closed into fist
-  if (pinkyExt > 0.65 && indexExt < 0.35 && middleExt < 0.35 && ringExt < 0.35) {
+  if (pinkyExt > 0.60 && indexExt < 0.38 && middleExt < 0.38 && ringExt < 0.38) {
     return {
       token: 'I',
       displayLabel: 'Letter I',
       type: 'letter',
-      confidence: 0.94,
-      description: 'Fist with pinky pointing straight up',
+      confidence: 0.95,
+      description: 'Fist with pinky pointing straight up (Letter I)',
     };
   }
 
@@ -906,7 +925,7 @@ export function classifyHandPostures(
   }
 
   // Letter E: All 4 fingertips curled tightly touching thumb
-  if (indexExt > 0.12 && indexExt < 0.48 && middleExt > 0.12 && middleExt < 0.48 && ringExt > 0.12 && ringExt < 0.48 && pinkyExt > 0.12 && pinkyExt < 0.48 && thumbIndexDist < 0.075) {
+  if (indexExt > 0.10 && indexExt < 0.48 && middleExt > 0.10 && middleExt < 0.48 && ringExt > 0.10 && ringExt < 0.48 && pinkyExt > 0.10 && pinkyExt < 0.48 && thumbIndexDist < 0.080) {
     return {
       token: 'E',
       displayLabel: 'Letter E',
@@ -917,49 +936,38 @@ export function classifyHandPostures(
   }
 
   // Letter C: Smooth curved hand arc facing forward
-  if (indexExt > 0.35 && indexExt < 0.85 && middleExt > 0.35 && middleExt < 0.85 && thumbIndexDist > 0.05 && thumbIndexDist < 0.16) {
-    if (wrist.y >= 0.32) {
+  if (indexExt > 0.30 && indexExt < 0.85 && middleExt > 0.30 && middleExt < 0.85 && thumbIndexDist > 0.05 && thumbIndexDist < 0.18) {
+    if (wrist.y >= 0.30) {
       return {
         token: 'C',
         displayLabel: 'Letter C',
         type: 'letter',
-        confidence: 0.91,
+        confidence: 0.92,
         description: 'Curved hand arc facing the viewer in a smooth C profile',
       };
     }
   }
 
   // Letter O: All fingers curved and touching thumb tip in a circular ring
-  if (thumbIndexDist < 0.050 && dist3D(thumbTip, middleTip) < 0.060 && indexExt < 0.58 && middleExt < 0.58) {
+  if (thumbIndexDist < 0.055 && dist3D(thumbTip, middleTip) < 0.065 && indexExt < 0.58 && middleExt < 0.58) {
     return {
       token: 'O',
       displayLabel: 'Letter O',
       type: 'letter',
-      confidence: 0.92,
+      confidence: 0.93,
       description: 'Fingers curved touching thumb in a clean circular O',
     };
   }
 
-  // Letter H (Single-hand): Index and Middle extended horizontally forward
-  if (indexExt > 0.55 && middleExt > 0.55 && ringExt < 0.38 && pinkyExt < 0.38) {
-    return {
-      token: 'H',
-      displayLabel: 'Letter H',
-      type: 'letter',
-      confidence: 0.94,
-      description: 'Index and middle fingers extended horizontally forward (Letter H)',
-    };
-  }
-
-  // Letter A / S (Single-hand): Closed fist with thumb resting upright alongside index
-  if (indexExt < 0.32 && middleExt < 0.32 && ringExt < 0.32 && pinkyExt < 0.32) {
-    const thumbUpright = dist3D(wrist, thumbTip) > 0.082;
+  // Letter A / S (Single-hand): Closed fist
+  if (indexExt < 0.38 && middleExt < 0.38 && ringExt < 0.38 && pinkyExt < 0.38) {
+    const thumbUpright = dist3D(wrist, thumbTip) > 0.078 && thumbTip.y < indexMcp.y + 0.03;
     if (thumbUpright) {
       return {
         token: 'A',
         displayLabel: 'Letter A',
         type: 'letter',
-        confidence: 0.94,
+        confidence: 0.95,
         description: 'Closed fist with thumb resting alongside index finger (Letter A)',
       };
     }
@@ -989,12 +997,12 @@ export class ISLCameraRecognizerEngine {
   private activeCandidate: DetectedSignCandidate | null = null;
   private candidateStartTime: number = 0;
   private lastDetectedTime: number = 0;
-  private holdDurationMs: number = 420; // 420ms steady hold allows natural gesture completion and crisp confirmation
+  private holdDurationMs: number = 180; // Ultra-snappy 180ms hold for rapid, fluent sign detection
   private lastConfirmedToken: string | null = null;
   private lockedToken: string | null = null; // Locks confirmed token until hand neutral reset or sign change
   private neutralSince: number = 0;
   private cooldownUntil: number = 0;
-  private recognitionMode: RecognitionMode = 'word';
+  private recognitionMode: RecognitionMode = 'hybrid';
   private switchSign: SwitchSignId = 'INDEX_TOUCH';
   private onnxRecognizer: ISLOnnxRecognizer = new ISLOnnxRecognizer();
   private latestOnnxPrediction: OnnxPrediction | null = null;
@@ -1003,16 +1011,29 @@ export class ISLCameraRecognizerEngine {
   private lastWristPos: LandmarkPoint3D | null = null;
   private lastIndexTipPos: LandmarkPoint3D | null = null;
   private lastFrameTime: number = 0;
+  private smoothedHandSpeed: number = 0;
   private isHandMoving: boolean = false;
   private stillSinceTime: number = 0;
   private pendingCandidateToken: string | null = null;
   private pendingCandidateCount: number = 0;
   private candidateHistory: { token: string; candidate: DetectedSignCandidate; time: number }[] = [];
 
-  constructor() {}
+  constructor(callback?: RecognitionCallback) {
+    if (callback) {
+      this.onUpdate = callback;
+    }
+  }
 
   /**
-   * Set the recognition mode ('word' for whole ISL words only, 'fingerspell' for A-Z spelling)
+   * Directly attach video element to recognizer
+   */
+  async attachVideo(video: HTMLVideoElement, canvas?: HTMLCanvasElement): Promise<boolean> {
+    const targetCanvas = canvas || (typeof document !== 'undefined' ? document.createElement('canvas') : ({} as HTMLCanvasElement));
+    return this.initialize(video, targetCanvas, this.onUpdate || (() => {}));
+  }
+
+  /**
+   * Set the recognition mode ('word' for whole ISL words only, 'fingerspell' for A-Z spelling, 'hybrid' for both)
    */
   setMode(mode: RecognitionMode) {
     this.recognitionMode = mode;
@@ -1052,7 +1073,7 @@ export class ISLCameraRecognizerEngine {
     video: HTMLVideoElement,
     canvas: HTMLCanvasElement,
     callback: RecognitionCallback,
-    initialMode: RecognitionMode = 'word',
+    initialMode: RecognitionMode = 'hybrid',
     initialSwitchSign: SwitchSignId = 'INDEX_TOUCH'
   ): Promise<boolean> {
     this.videoEl = video;
@@ -1114,8 +1135,8 @@ export class ISLCameraRecognizerEngine {
 
     let lastVideoTime = -1;
     let lastDetectionTime = 0;
-    // Cap ML inference to 25 FPS (~40ms interval) to guarantee silky 60 FPS video stream playback
-    const MIN_DETECTION_INTERVAL_MS = 40;
+    // High-frequency inference (~20ms interval, up to 50 FPS) for instant sign recognition
+    const MIN_DETECTION_INTERVAL_MS = 20;
 
     const processFrame = () => {
       if (!this.isRunning) return;
@@ -1184,7 +1205,9 @@ export class ISLCameraRecognizerEngine {
         if (dt < 0.3) {
           const dWrist = dist3D(currWrist, this.lastWristPos);
           const dIndex = dist3D(currIndex, this.lastIndexTipPos || currWrist);
-          handSpeed = (dWrist + dIndex) / dt;
+          const instantSpeed = (dWrist + dIndex) / dt;
+          this.smoothedHandSpeed = this.smoothedHandSpeed * 0.60 + instantSpeed * 0.40;
+          handSpeed = this.smoothedHandSpeed;
         }
       }
       this.lastWristPos = { ...currWrist };
@@ -1195,6 +1218,7 @@ export class ISLCameraRecognizerEngine {
       this.lastIndexTipPos = null;
       this.lastFrameTime = now;
       this.stillSinceTime = 0;
+      this.smoothedHandSpeed = 0;
     }
 
     // Push frame into rolling 30-frame temporal buffer for ONNX sequence model
@@ -1216,8 +1240,9 @@ export class ISLCameraRecognizerEngine {
     const framing = evaluateFramingQuality(parsedHands);
 
     // ─── STOP & POSE GATE: Distinguish Hand in Flight vs Hand Stopped in Sign ───
-    const isMovingFast = handSpeed > 0.45;
-    const isHoldingStill = handSpeed <= 0.28;
+    // Generous velocity thresholds (2.2 / 1.6) that effortlessly absorb camera sensor jitter
+    const isMovingFast = handSpeed > 2.2;
+    const isHoldingStill = handSpeed <= 1.6;
 
     if (isMovingFast) {
       this.isHandMoving = true;
@@ -1226,7 +1251,6 @@ export class ISLCameraRecognizerEngine {
       this.pendingCandidateCount = 0;
 
       // When the hand is actively moving/traveling, DO NOT churn random words!
-      // This completely stops word flickering during transitions!
       this.onUpdate({
         candidate: this.lockedToken ? this.activeCandidate : null,
         holdProgress: 0.0,
@@ -1247,8 +1271,8 @@ export class ISLCameraRecognizerEngine {
       }
     }
 
-    // Require the hand to be held still for at least ~80ms before evaluating the pose
-    const hasSettled = this.stillSinceTime > 0 && (now - this.stillSinceTime >= 80);
+    // Fast settling: evaluate pose after only ~20ms of stabilization
+    const hasSettled = this.stillSinceTime > 0 && (now - this.stillSinceTime >= 20);
     if (!hasSettled && parsedHands.length > 0) {
       this.onUpdate({
         candidate: this.activeCandidate,
@@ -1279,6 +1303,21 @@ export class ISLCameraRecognizerEngine {
       detected = kinematicMatch;
     } else if (this.recognitionMode === 'fingerspell') {
       if (kinematicMatch && kinematicMatch.type === 'letter') {
+        detected = kinematicMatch;
+      }
+    } else if (this.recognitionMode === 'hybrid') {
+      if (kinematicMatch && kinematicMatch.type === 'letter') {
+        detected = kinematicMatch;
+      } else if (parquetMatch) {
+        detected = {
+          token: parquetMatch.token,
+          displayLabel: parquetMatch.displayLabel,
+          type: 'gesture',
+          confidence: parquetMatch.confidence,
+          description: parquetMatch.description,
+          topK: this.latestOnnxPrediction?.topK,
+        };
+      } else if (kinematicMatch && kinematicMatch.type === 'gesture') {
         detected = kinematicMatch;
       }
     } else {
@@ -1382,17 +1421,15 @@ export class ISLCameraRecognizerEngine {
       }
 
       if (!this.activeCandidate || this.activeCandidate.token !== detected.token) {
-        // Only switch candidate if verified across at least 2 consecutive frames
-        if (this.pendingCandidateCount >= 2 || !this.activeCandidate) {
-          this.activeCandidate = detected;
-          this.candidateStartTime = now;
-          holdProgress = 0.08;
-        }
+        this.activeCandidate = detected;
+        this.candidateStartTime = now;
+        holdProgress = 0.15;
       } else {
         // Signer holding the posture steadily: advance progress ring over calibrated hold duration
         const elapsed = now - this.candidateStartTime;
         const isSwitchSign = detected.token === 'MODE_SWITCH';
-        const targetHold = isSwitchSign ? 380 : (this.recognitionMode === 'fingerspell' ? 320 : this.holdDurationMs);
+        const isLetter = detected.type === 'letter';
+        const targetHold = isSwitchSign ? 300 : (isLetter ? 140 : this.holdDurationMs);
         holdProgress = Math.min(1.0, elapsed / targetHold);
 
         if (holdProgress >= 1.0) {
@@ -1400,7 +1437,7 @@ export class ISLCameraRecognizerEngine {
           confirmedToken = detected;
           this.lastConfirmedToken = detected.token;
           this.lockedToken = detected.token; // Lock until neutral reset or sign transition
-          this.cooldownUntil = now + (isSwitchSign ? 1200 : (this.recognitionMode === 'fingerspell' ? 300 : 420)); // Mode switch has 1.2s cooldown to prevent accidental rebound
+          this.cooldownUntil = now + (isSwitchSign ? 600 : (isLetter ? 200 : 220));
           this.candidateStartTime = now;
           holdProgress = 1.0;
 
@@ -1421,15 +1458,15 @@ export class ISLCameraRecognizerEngine {
         this.neutralSince = now;
       }
 
-      // If user drops hands or returns to neutral for > 550ms, unlock (avoids dropped frame jitter from unlocking duplicate sign)
-      if (now - this.neutralSince > 550) {
+      // If user drops hands or returns to neutral for > 320ms, unlock
+      if (now - this.neutralSince > 320) {
         this.lockedToken = null;
         this.lastConfirmedToken = null;
         this.latestOnnxPrediction = null;
       }
 
-      // 180ms grace period for dropped camera frames before resetting
-      if (this.activeCandidate && (now - this.lastDetectedTime < 180)) {
+      // 140ms grace period for dropped camera frames before resetting
+      if (this.activeCandidate && (now - this.lastDetectedTime < 140)) {
         const elapsed = now - this.candidateStartTime;
         holdProgress = Math.min(1.0, elapsed / this.holdDurationMs);
       } else {

@@ -25,6 +25,7 @@ import nextDynamic from 'next/dynamic';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '@/context/AuthContext';
 import { normalizeRoomCode } from '@/types';
+import { SignEmoji3DViewer, SIGN_EMOJIS_LIST, SignEmojiDef } from '@/components/emojis/SignEmoji3DViewer';
 import {
   Video,
   VideoOff,
@@ -76,7 +77,9 @@ import {
   Target,
   ShieldCheck,
   AlertTriangle,
+  QrCode,
 } from 'lucide-react';
+import { QrInviteModal } from '@/components/meeting/QrInviteModal';
 import {
   ISLCameraRecognizerEngine,
   DetectedSignCandidate,
@@ -1017,9 +1020,21 @@ function MeetingRoomContent() {
     }
   }, [displayName]);
 
-  const [avatarMode, setAvatarMode] = useState<'hologram' | '3d_avatar'>(
+  const [avatarMode, setAvatarMode] = useState<'hologram' | '3d_avatar' | 'emojis'>(
     userRole === 'speaking_interviewer' ? '3d_avatar' : 'hologram'
   );
+  const [selectedSignEmojiId, setSelectedSignEmojiId] = useState<string>('doctor');
+  const [showSignEmojiPicker, setShowSignEmojiPicker] = useState<boolean>(false);
+  const [floatingReaction, setFloatingReaction] = useState<{ id: string; name: string; icon: string } | null>(null);
+
+  const triggerSignReaction = (emoji: { id: string; name: string; icon: string }) => {
+    setFloatingReaction(emoji);
+    setSelectedSignEmojiId(emoji.id);
+    executeTranslateAndSign(emoji.id);
+    setTimeout(() => {
+      setFloatingReaction((prev) => (prev?.id === emoji.id ? null : prev));
+    }, 4500);
+  };
   const [hologramMountEl, setHologramMountEl] = useState<HTMLDivElement | null>(null);
   const [showReadyCard, setShowReadyCard] = useState(false);
   const [currentFrameInfo, setCurrentFrameInfo] = useState<{ current: number; total: number }>({ current: 0, total: 63 });
@@ -1453,6 +1468,7 @@ function MeetingRoomContent() {
   const [viewMode, setViewMode] = useState<'grid' | 'signer_focus' | 'presentation'>('grid');
   const [isLocalPiPDocked, setIsLocalPiPDocked] = useState(false);
   const [showParticipantList, setShowParticipantList] = useState(false);
+  const [gridPage, setGridPage] = useState<number>(1);
 
   // Media States (Google Meet Controls)
   const [isListening, setIsListening] = useState(false);
@@ -1514,7 +1530,9 @@ function MeetingRoomContent() {
   });
   const [meetingNotesLog, setMeetingNotesLog] = useState<MeetingNoteEntry[]>([]);
   const [showMeetingNotesModal, setShowMeetingNotesModal] = useState<boolean>(false);
+  const [showQrInviteModal, setShowQrInviteModal] = useState<boolean>(false);
   const [showSignGuideModal, setShowSignGuideModal] = useState<boolean>(false);
+  const [showHeaderMoreMenu, setShowHeaderMoreMenu] = useState<boolean>(false);
   const [guideActiveTab, setGuideActiveTab] = useState<'camera' | 'dataset'>('camera');
   const [guideActiveCategory, setGuideActiveCategory] = useState<string>('All');
   const [guideSearchQuery, setGuideSearchQuery] = useState<string>('');
@@ -2051,7 +2069,11 @@ function MeetingRoomContent() {
 
   // ─── 4. WebRTC Signaling & Socket.IO Real-Time Peer Event Relay ─────────────
   useEffect(() => {
-    const socket = io({ path: '/socket.io' });
+    const rawSignalingUrl = (process.env.NEXT_PUBLIC_SIGNALING_SERVER_URL || '').trim();
+    const isExternalSignaling = rawSignalingUrl && !rawSignalingUrl.includes('localhost');
+    const socket = isExternalSignaling
+      ? io(rawSignalingUrl, { path: '/socket.io', transports: ['websocket', 'polling'] })
+      : io({ path: '/socket.io', transports: ['websocket', 'polling'] });
     socketRef.current = socket;
 
     // Helper: Build or retrieve RTCPeerConnection for a given peer
@@ -4774,144 +4796,236 @@ function MeetingRoomContent() {
                   Meeting Studio
                 </span>
               </span>
-              <span className="text-[11px] text-slate-400 font-mono">
+              <button
+                type="button"
+                onClick={copyMeetingLink}
+                className="text-[11px] text-slate-400 hover:text-orange-400 font-mono flex items-center gap-1 transition text-left cursor-pointer"
+                title="Click to copy room link"
+              >
                 Room: <strong className="text-orange-400">{roomId}</strong>
-              </span>
+                <Copy className="w-2.5 h-2.5 opacity-60 hover:opacity-100" />
+              </button>
             </div>
           </Link>
 
-          <span className="hidden sm:inline-flex px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-slate-300 font-mono text-[10px] font-medium items-center gap-1.5">
+          <span className="hidden lg:inline-flex px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-slate-300 font-mono text-[10px] font-medium items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             <span>{activeRole === 'deaf_signer' ? 'Deaf Signer' : 'Voice Speaker'}</span>
           </span>
         </div>
 
-        {/* Center: Mode Switcher Capsule */}
-        <div className="hidden md:flex items-center gap-1 p-1 bg-slate-900 rounded-full border border-slate-800">
+        {/* Center: Clean Layout Mode Switcher */}
+        <div className="flex items-center bg-slate-900 rounded-full p-1 border border-slate-800 text-xs shadow-inner">
           <button
-            onClick={() => handleSwitchRole('deaf_signer')}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer ${
-              activeRole === 'deaf_signer'
-                ? 'bg-orange-500 text-white shadow-md font-bold'
+            onClick={() => setViewMode('grid')}
+            className={`px-3 py-1.5 rounded-full flex items-center gap-1.5 transition font-medium cursor-pointer ${
+              viewMode === 'grid'
+                ? 'bg-slate-800 text-white font-bold shadow-xs'
                 : 'text-slate-400 hover:text-white'
             }`}
-            title="Switch to Deaf Signer (ISL Sign-to-Speech active)"
+            title="Google Meet Grid Layout"
           >
-            <Hand className="w-3.5 h-3.5" />
-            <span>Signer View</span>
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Grid</span>
           </button>
           <button
-            onClick={() => handleSwitchRole('speaking_interviewer')}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer ${
-              activeRole === 'speaking_interviewer'
-                ? 'bg-sky-500 text-white shadow-md font-bold'
+            onClick={() => setViewMode('signer_focus')}
+            className={`px-3 py-1.5 rounded-full flex items-center gap-1.5 transition font-medium cursor-pointer ${
+              viewMode === 'signer_focus'
+                ? 'bg-orange-500 text-white font-bold shadow-xs'
                 : 'text-slate-400 hover:text-white'
             }`}
-            title="Switch to Hearing Speaker (Voice-to-Sign active)"
+            title="3D Signer Focus Layout"
           >
-            <Mic className="w-3.5 h-3.5" />
-            <span>Interviewer View</span>
+            <HandMetal className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Signer Focus</span>
           </button>
+          {(isScreenSharing || Array.from(remoteParticipants.values()).some((p) => p.isScreenSharing)) && (
+            <button
+              onClick={() => setViewMode('presentation')}
+              className={`px-3 py-1.5 rounded-full flex items-center gap-1.5 transition font-medium cursor-pointer ${
+                viewMode === 'presentation'
+                  ? 'bg-orange-500 text-white font-bold shadow-xs'
+                  : 'text-orange-400 hover:text-orange-300'
+              }`}
+              title="Screen Presentation Layout"
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Presentation</span>
+            </button>
+          )}
         </div>
 
-        {/* Right: Layout Switcher, Timer, Context Toggle, Share & Participant Count */}
+        {/* Right: Streamlined Action Pill Group */}
         <div className="flex items-center gap-2 sm:gap-2.5">
-          {/* Google Meet Layout Mode Switcher */}
-          <div className="hidden lg:flex items-center bg-slate-900 rounded-full p-1 border border-slate-800 text-xs">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`px-2.5 py-1 rounded-full flex items-center gap-1 transition ${
-                viewMode === 'grid'
-                  ? 'bg-slate-800 text-white font-bold shadow-xs'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Google Meet Grid Layout"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Grid</span>
-            </button>
-            <button
-              onClick={() => setViewMode('signer_focus')}
-              className={`px-2.5 py-1 rounded-full flex items-center gap-1 transition ${
-                viewMode === 'signer_focus'
-                  ? 'bg-orange-500 text-white font-bold shadow-xs'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="3D Signer Focus Layout"
-            >
-              <HandMetal className="w-3.5 h-3.5" />
-              <span>Signer Focus</span>
-            </button>
-            {(isScreenSharing || Array.from(remoteParticipants.values()).some((p) => p.isScreenSharing)) && (
-              <button
-                onClick={() => setViewMode('presentation')}
-                className={`px-2.5 py-1 rounded-full flex items-center gap-1 transition ${
-                  viewMode === 'presentation'
-                    ? 'bg-orange-500 text-white font-bold shadow-xs'
-                    : 'text-orange-400 hover:text-orange-300'
-                }`}
-                title="Screen Presentation Layout"
-              >
-                <Monitor className="w-3.5 h-3.5" />
-                <span>Presentation</span>
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>{formatTime(meetingDurationSec)}</span>
-          </div>
-
-          {/* LLM Context & Biography Pill */}
+          {/* QR Code / Direct Scan to Join */}
           <button
             type="button"
-            onClick={() => setShowContextModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-medium text-slate-300 hover:text-orange-400 transition cursor-pointer"
-            title="Edit Meeting Biography & AI Topic Context"
+            onClick={() => setShowQrInviteModal(true)}
+            className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 transition cursor-pointer active:scale-95"
+            title="Instant QR Code: Mobile participants can scan to join without typing room code"
           >
-            <Sparkles className="w-3.5 h-3.5 text-orange-400" />
-            <span className="hidden sm:inline">LLM Context</span>
-            {meetingContext && <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />}
+            <QrCode className="w-3.5 h-3.5 text-white" />
+            <span className="hidden md:inline">Scan to Join</span>
           </button>
 
           {/* Automated Bilingual Clinical / Meeting Minutes Generator */}
           <button
             type="button"
             onClick={() => setShowMeetingNotesModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/50 text-xs font-medium text-slate-300 hover:text-emerald-400 transition cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/50 text-xs font-semibold text-slate-200 hover:text-emerald-400 transition cursor-pointer"
             title="Export Bilingual Meeting Minutes & Clinical Records"
           >
             <FileText className="w-3.5 h-3.5 text-emerald-400" />
             <span className="hidden sm:inline">Minutes</span>
             {meetingNotesLog.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 font-mono text-[10px]">
+              <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 font-mono text-[10px] font-bold">
                 {meetingNotesLog.length}
               </span>
             )}
-          </button>
-
-          {/* Share Pill */}
-          <button
-            type="button"
-            onClick={openShareModal}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-medium text-slate-300 hover:text-white transition cursor-pointer"
-            title="Share Room Link"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span>Share</span>
           </button>
 
           {/* Participants Pill */}
           <button
             type="button"
             onClick={() => setShowParticipantList(!showParticipantList)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-mono text-slate-300 hover:text-white transition cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-mono text-slate-300 hover:text-white transition cursor-pointer"
             title="View Participants"
           >
-            <Users className="w-3.5 h-3.5" />
+            <Users className="w-3.5 h-3.5 text-slate-400" />
             <span>{1 + remoteParticipants.size}</span>
           </button>
+
+          {/* Meeting Clock / Duration */}
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>{formatTime(meetingDurationSec)}</span>
+          </div>
+
+          {/* More Options Popover Menu */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowHeaderMoreMenu(!showHeaderMoreMenu)}
+              className={`p-2 rounded-full border transition cursor-pointer ${
+                showHeaderMoreMenu
+                  ? 'bg-orange-500 text-white border-orange-500 shadow-md'
+                  : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 hover:text-white'
+              }`}
+              title="More Options & Settings"
+            >
+              <Sliders className="w-4 h-4" />
+            </button>
+
+            {showHeaderMoreMenu && (
+              <div className="absolute right-0 top-12 w-64 bg-slate-900/98 backdrop-blur-2xl border border-slate-800 rounded-2xl p-2 shadow-2xl z-50 text-xs text-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-1">
+                <div className="px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold border-b border-slate-800">
+                  Meeting Tools
+                </div>
+
+                {/* Role Switcher */}
+                <div className="p-1">
+                  <div className="text-[11px] text-slate-400 px-2 py-1">Active Role:</div>
+                  <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-950 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleSwitchRole('deaf_signer');
+                        setShowHeaderMoreMenu(false);
+                      }}
+                      className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 cursor-pointer ${
+                        activeRole === 'deaf_signer'
+                          ? 'bg-orange-500 text-white font-bold'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Hand className="w-3 h-3" />
+                      <span>Signer</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleSwitchRole('speaking_interviewer');
+                        setShowHeaderMoreMenu(false);
+                      }}
+                      className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 cursor-pointer ${
+                        activeRole === 'speaking_interviewer'
+                          ? 'bg-sky-500 text-white font-bold'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Mic className="w-3 h-3" />
+                      <span>Speaker</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* LLM Context */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowContextModal(true);
+                    setShowHeaderMoreMenu(false);
+                  }}
+                  className="w-full px-3 py-2 rounded-xl hover:bg-slate-800 flex items-center gap-2.5 transition text-left cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4 text-orange-400 shrink-0" />
+                  <div className="flex-1">
+                    <div className="font-semibold text-white">LLM Context &amp; Bio</div>
+                    <div className="text-[10px] text-slate-400">Contextual medical &amp; meeting vocabulary</div>
+                  </div>
+                </button>
+
+                {/* Sign Postures Guide */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSignGuideModal(true);
+                    setShowHeaderMoreMenu(false);
+                  }}
+                  className="w-full px-3 py-2 rounded-xl hover:bg-slate-800 flex items-center gap-2.5 transition text-left cursor-pointer"
+                >
+                  <BookOpen className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div className="flex-1">
+                    <div className="font-semibold text-white">ISL Sign Guide</div>
+                    <div className="text-[10px] text-slate-400">262 certified postures &amp; alphabet</div>
+                  </div>
+                </button>
+
+                {/* Share Link */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    openShareModal();
+                    setShowHeaderMoreMenu(false);
+                  }}
+                  className="w-full px-3 py-2 rounded-xl hover:bg-slate-800 flex items-center gap-2.5 transition text-left cursor-pointer"
+                >
+                  <Share2 className="w-4 h-4 text-sky-400 shrink-0" />
+                  <div className="flex-1">
+                    <div className="font-semibold text-white">Share Meeting Link</div>
+                    <div className="text-[10px] text-slate-400">Copy URL or invite colleagues</div>
+                  </div>
+                </button>
+
+                {/* AI Model Settings */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSettingsModal(true);
+                    setShowHeaderMoreMenu(false);
+                  }}
+                  className="w-full px-3 py-2 rounded-xl hover:bg-slate-800 flex items-center gap-2.5 transition text-left cursor-pointer"
+                >
+                  <Sliders className="w-4 h-4 text-amber-400 shrink-0" />
+                  <div className="flex-1">
+                    <div className="font-semibold text-white">Model &amp; API Settings</div>
+                    <div className="text-[10px] text-slate-400">Custom Gemini key &amp; parameters</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -5016,116 +5130,68 @@ function MeetingRoomContent() {
           const isPresenting = Boolean(activePresenter) || viewMode === 'presentation';
 
           // Helper: Render Local User Camera Tile
-          const renderLocalTile = (isCompact = false, isFloating = false) => (
-            <div
-              key="local-user-tile"
-              className={`flex flex-col rounded-3xl bg-slate-900 border border-slate-800/80 overflow-hidden relative shadow-2xl transition-all ${
-                isFloating
-                  ? 'w-56 sm:w-64 h-36 sm:h-40 absolute bottom-20 right-6 z-30 shadow-2xl border-orange-500/60 ring-2 ring-orange-500/30 hover:scale-105'
-                  : isCompact
-                  ? 'h-44 sm:h-52 w-full shrink-0'
-                  : 'flex-1 w-full h-full min-h-[240px]'
-              }`}
-            >
-              {/* Top Right: Mode Switcher & Status Guide */}
-              <div className="absolute top-3 right-3 z-20 flex items-center gap-2 pointer-events-auto">
-                {isVirtualCameraActive && (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-950/85 backdrop-blur-md border border-indigo-500/50 text-indigo-300 text-xs font-semibold shadow-md">
-                    <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-                    <span>Virtual Cam</span>
-                    <button
-                      type="button"
-                      onClick={switchBackToHardwareCamera}
-                      className="ml-1 text-[10px] text-white underline hover:text-indigo-200 cursor-pointer"
-                      title="Try switching back to real physical webcam"
-                    >
-                      Retry Real
-                    </button>
-                  </div>
-                )}
-                {!isSignToSpeechActive && (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-950/85 backdrop-blur-md border border-sky-500/40 text-sky-300 text-xs font-semibold shadow-md">
-                    <Mic className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Hearing Speaker (Voice active)</span>
-                  </div>
-                )}
-                {isSignToSpeechActive && isVideoOn && (
-                  <div className="flex items-center bg-slate-950/85 backdrop-blur-md rounded-full p-1 border border-slate-700/80 shadow-md">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleSigningMode('word')}
-                      className={`px-3 py-1 rounded-full text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                        signingInputMode === 'word'
-                          ? 'bg-orange-500 text-white shadow-xs'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                      title="Recognize Whole ISL Words (Hello, Doctor, Thank You, etc.)"
-                    >
-                      <Hand className="w-3.5 h-3.5" />
-                      <span>Words</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleSigningMode('fingerspell')}
-                      className={`px-3 py-1 rounded-full text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                        signingInputMode === 'fingerspell'
-                          ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                      title="Recognize Fingerspelling Letters A-Z (Names, Cities, etc.)"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Spell Letters</span>
-                    </button>
-
-                    <div
-                      className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-700/80 text-[10px] font-mono text-slate-300 shadow-inner"
-                      title="Make this physical gesture in camera to toggle between Words and Spell Letters without mouse!"
-                    >
-                      <Sparkles className="w-3 h-3 text-orange-400" />
-                      <span>Switch Sign:</span>
-                      <strong className="text-orange-300">
-                        {AVAILABLE_SWITCH_SIGNS.find((s) => s.id === customSwitchSign)?.name.split('(')[0].trim() || 'Index Touch'}
-                      </strong>
+          const renderLocalTile = (isCompact = false, isFloating = false) => {
+            return (
+              <div
+                key="local-user-tile"
+                className={`flex flex-col rounded-3xl bg-slate-900 border border-slate-800/80 overflow-hidden relative shadow-2xl transition-all ${
+                  isFloating
+                    ? 'w-56 sm:w-64 h-36 sm:h-40 absolute bottom-20 right-6 z-30 shadow-2xl border-orange-500/60 ring-2 ring-orange-500/30 hover:scale-105'
+                    : isCompact
+                    ? 'h-44 sm:h-52 w-full shrink-0'
+                    : 'flex-1 w-full h-full min-h-[240px]'
+                }`}
+              >
+                {/* Minimal Top-Right Status Badge (Unobstructed View) */}
+                <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 pointer-events-auto">
+                  {isVirtualCameraActive ? (
+                    <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-950/80 backdrop-blur-md border border-indigo-500/40 text-indigo-300 text-[10px] font-mono shadow-sm">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+                      <span>Virtual Cam</span>
                     </div>
-                  </div>
-                )}
-                {isSignToSpeechActive && isVideoOn && (
-                  <button
-                    type="button"
-                    onClick={() => setShowSignGuideModal(true)}
-                    className="px-2.5 py-1.5 rounded-full text-[11px] font-mono font-medium flex items-center gap-1.5 transition bg-slate-950/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 cursor-pointer shadow-sm"
-                    title="View ISL Sign Guide & Postures"
-                  >
-                    <BookOpen className="w-3 h-3 text-orange-400" />
-                    <span>Guide</span>
-                  </button>
-                )}
-                {isSignToSpeechActive && isVideoOn && (
-                  <button
-                    type="button"
-                    onClick={() => setShowFramingGuide(!showFramingGuide)}
-                    className={`px-2.5 py-1.5 rounded-full text-[11px] font-mono font-medium flex items-center gap-1.5 transition border cursor-pointer shadow-sm ${
-                      showFramingGuide
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
-                        : 'bg-slate-950/80 text-slate-400 hover:text-white border-slate-700/80'
-                    }`}
-                    title="Toggle Camera Signing Zone Framing Guard HUD"
-                  >
-                    <Target className="w-3 h-3 text-emerald-400" />
-                    <span>Framing HUD: {showFramingGuide ? 'ON' : 'OFF'}</span>
-                  </button>
-                )}
-                {isFloating && (
-                  <button
-                    onClick={() => setIsLocalPiPDocked(true)}
-                    className="px-2.5 py-1 rounded-full bg-slate-900/90 hover:bg-slate-800 text-xs font-mono text-slate-300 border border-slate-700 cursor-pointer"
-                    title="Dock to side"
-                  >
-                    Dock
-                  </button>
-                )}
-              </div>
+                  ) : null}
+
+                  {isSignToSpeechActive && isVideoOn ? (
+                    <div className="flex items-center gap-1 bg-slate-950/85 backdrop-blur-md rounded-full px-2 py-0.5 border border-slate-700/80 shadow-md">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSigningMode(signingInputMode === 'word' ? 'fingerspell' : 'word')}
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold transition flex items-center gap-1 cursor-pointer ${
+                          signingInputMode === 'word' ? 'bg-orange-500 text-white' : 'bg-amber-400 text-slate-950'
+                        }`}
+                        title="Click to toggle between Words and Fingerspelling"
+                      >
+                        <Hand className="w-3 h-3" />
+                        <span>{signingInputMode === 'word' ? 'Words' : 'Spelling'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowSignGuideModal(true)}
+                        className="p-1 rounded-full text-slate-400 hover:text-white transition cursor-pointer"
+                        title="Open ISL Sign Postures Guide"
+                      >
+                        <BookOpen className="w-3 h-3 text-orange-400" />
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {!isSignToSpeechActive ? (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/85 backdrop-blur-md border border-sky-500/30 text-sky-300 text-[10px] font-mono shadow-sm">
+                      <Mic className="w-3 h-3 text-sky-400" />
+                      <span>Voice</span>
+                    </div>
+                  ) : null}
+
+                  {isFloating ? (
+                    <button
+                      onClick={() => setIsLocalPiPDocked(true)}
+                      className="px-2.5 py-1 rounded-full bg-slate-900/90 hover:bg-slate-800 text-xs font-mono text-slate-300 border border-slate-700 cursor-pointer"
+                      title="Dock to side"
+                    >
+                      Dock
+                    </button>
+                  ) : null}
+                </div>
 
               {/* Video Viewport Container */}
               <div className="flex-1 bg-black relative flex items-center justify-center overflow-hidden">
@@ -5171,93 +5237,25 @@ function MeetingRoomContent() {
                   }`}
                 />
 
-                {/* ─── Intelligent "Camera Signing Zone" Framing Guard (Auto-HUD) ─── */}
-                {showFramingGuide && isSignToSpeechActive && isVideoOn && !isScreenSharing && (
-                  <div className="absolute inset-0 pointer-events-none z-15 flex items-center justify-center p-3 sm:p-5">
-                    {/* Translucent Bounding Perimeter Box */}
-                    <div
-                      className={`relative w-[86%] h-[72%] rounded-3xl transition-all duration-300 flex flex-col justify-between ${
-                        framingStatus.zoneState === 'optimal'
-                          ? 'border-2 border-emerald-400/80 shadow-[inset_0_0_30px_rgba(16,185,129,0.18)] bg-emerald-500/[0.03]'
-                          : framingStatus.zoneState === 'no_hands'
-                          ? 'border-2 border-dashed border-slate-500/40 bg-slate-900/[0.04]'
-                          : 'border-2 border-amber-400/80 shadow-[inset_0_0_30px_rgba(245,158,11,0.18)] bg-amber-500/[0.04]'
-                      }`}
-                    >
-                      {/* 4 Precision Corner Reticles */}
-                      <div className={`absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 rounded-tl-2xl -translate-x-[2px] -translate-y-[2px] transition-colors ${
-                        framingStatus.zoneState === 'optimal' ? 'border-emerald-400' : framingStatus.zoneState === 'no_hands' ? 'border-slate-500' : 'border-amber-400'
-                      }`} />
-                      <div className={`absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 rounded-tr-2xl translate-x-[2px] -translate-y-[2px] transition-colors ${
-                        framingStatus.zoneState === 'optimal' ? 'border-emerald-400' : framingStatus.zoneState === 'no_hands' ? 'border-slate-500' : 'border-amber-400'
-                      }`} />
-                      <div className={`absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 rounded-bl-2xl -translate-x-[2px] translate-y-[2px] transition-colors ${
-                        framingStatus.zoneState === 'optimal' ? 'border-emerald-400' : framingStatus.zoneState === 'no_hands' ? 'border-slate-500' : 'border-amber-400'
-                      }`} />
-                      <div className={`absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 rounded-br-2xl translate-x-[2px] translate-y-[2px] transition-colors ${
-                        framingStatus.zoneState === 'optimal' ? 'border-emerald-400' : framingStatus.zoneState === 'no_hands' ? 'border-slate-500' : 'border-amber-400'
-                      }`} />
-
-                      {/* Top HUD Status Pill */}
-                      <div className="pt-2 px-3 flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/80 backdrop-blur-md border border-white/10 text-[10px] font-mono shadow-md">
-                          <Target className="w-3 h-3 text-orange-400" />
-                          <span className="text-slate-300">Signing Zone</span>
-                        </div>
-
-                        {framingStatus.zoneState === 'optimal' ? (
-                          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/90 backdrop-blur-md border border-emerald-500/60 text-[10px] font-mono text-emerald-300 font-bold shadow-lg animate-in fade-in">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                            <span>Optimal Signing Zone</span>
-                          </div>
-                        ) : framingStatus.zoneState === 'no_hands' ? (
-                          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/80 backdrop-blur-md border border-slate-700/80 text-[10px] font-mono text-slate-400">
-                            <span>Place hands inside frame</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-950/90 backdrop-blur-md border border-amber-500/60 text-[10px] font-mono text-amber-300 font-bold shadow-lg animate-in fade-in">
-                            <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
-                            <span>{framingStatus.message}</span>
-                          </div>
-                        )}
+                {/* Floating 3D Sign Emoji Reaction Overlay */}
+                {floatingReaction && (
+                  <div className="absolute top-16 right-4 z-30 pointer-events-none animate-in fade-in zoom-in-75 slide-in-from-top-4 duration-300">
+                    <div className="flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-amber-500/60 text-white shadow-2xl shadow-amber-500/30 ring-2 ring-amber-400/30">
+                      <span className="text-2xl animate-bounce">{floatingReaction.icon}</span>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] font-mono font-bold tracking-wider text-amber-400 uppercase">3D SIGN REACTION</span>
+                        <span className="text-xs font-black text-white">{floatingReaction.name}</span>
                       </div>
+                    </div>
+                  </div>
+                )}
 
-                      {/* Directional Visual Cues for Out-of-Zone Positioning */}
-                      {framingStatus.zoneState === 'too_low' && (
-                        <div className="pb-3 flex justify-center animate-bounce">
-                          <div className="px-3 py-1 rounded-full bg-amber-500 text-slate-950 font-bold text-[11px] font-mono flex items-center gap-1.5 shadow-lg">
-                            <span>▲ Raise hands slightly to chest level</span>
-                          </div>
-                        </div>
-                      )}
-                      {framingStatus.zoneState === 'too_close' && (
-                        <div className="pb-3 flex justify-center">
-                          <div className="px-3 py-1 rounded-full bg-amber-500 text-slate-950 font-bold text-[11px] font-mono flex items-center gap-1.5 shadow-lg">
-                            <span>◀ Step back 6 inches from camera</span>
-                          </div>
-                        </div>
-                      )}
-                      {framingStatus.zoneState === 'too_far' && (
-                        <div className="pb-3 flex justify-center">
-                          <div className="px-3 py-1 rounded-full bg-amber-500 text-slate-950 font-bold text-[11px] font-mono flex items-center gap-1.5 shadow-lg">
-                            <span>▶ Move slightly closer</span>
-                          </div>
-                        </div>
-                      )}
-                      {framingStatus.zoneState === 'off_center' && (
-                        <div className="pb-3 flex justify-center">
-                          <div className="px-3 py-1 rounded-full bg-sky-500 text-slate-950 font-bold text-[11px] font-mono flex items-center gap-1.5 shadow-lg">
-                            <span>◀ Center your hands in frame ▶</span>
-                          </div>
-                        </div>
-                      )}
-                      {framingStatus.zoneState === 'optimal' && (
-                        <div className="pb-2 flex justify-center opacity-70">
-                          <span className="text-[9px] font-mono text-emerald-400/80 bg-slate-950/70 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                            Chest-Level Geometric Alignment Calibrated
-                          </span>
-                        </div>
-                      )}
+                {/* ─── Non-Intrusive Signer Zone Cue (Bottom-Centered Toast - Never Obstructs Face/Chest) ─── */}
+                {isSignToSpeechActive && isVideoOn && !isScreenSharing && framingStatus.zoneState !== 'optimal' && framingStatus.zoneState !== 'no_hands' && (
+                  <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-20 pointer-events-none animate-in fade-in duration-200">
+                    <div className="px-3.5 py-1.5 rounded-full bg-slate-950/90 backdrop-blur-md border border-amber-500/50 text-[11px] font-mono text-amber-300 flex items-center gap-2 shadow-xl">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>{framingStatus.message}</span>
                     </div>
                   </div>
                 )}
@@ -5593,9 +5591,11 @@ function MeetingRoomContent() {
               </div>
             </div>
           );
+        };
 
-          // Helper: Render 3D Holographic Sign Interpreter Tile
-          const renderHologramTile = (customClass = 'w-full lg:w-1/2') => (
+        // Helper: Render 3D Holographic Sign Interpreter Tile
+        const renderHologramTile = (customClass = 'w-full lg:w-1/2') => {
+          return (
             <div
               key="hologram-sign-tile"
               className={`flex flex-col rounded-2xl bg-slate-900/90 border border-slate-800 overflow-hidden relative shadow-xl backdrop-blur-md ${customClass}`}
@@ -5627,6 +5627,17 @@ function MeetingRoomContent() {
                   >
                     <User className="w-3.5 h-3.5" />
                     <span>3D Avatar</span>
+                  </button>
+                  <button
+                    onClick={() => setAvatarMode('emojis')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                      avatarMode === 'emojis'
+                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
+                        : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60'
+                    }`}
+                  >
+                    <span className="text-xs">🤟</span>
+                    <span>3D Emojis</span>
                   </button>
                 </div>
 
@@ -5665,12 +5676,20 @@ function MeetingRoomContent() {
               <div className="px-4 py-2 bg-slate-950/60 border-b border-slate-800/60 flex items-center justify-between text-xs font-mono">
                 <span className="text-slate-200 font-semibold flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-orange-400" />
-                  {avatarMode === 'hologram' ? 'ISL HOLOGRAM (DATASET GROUND-TRUTH)' : '3D AVATAR (HUMANOID INTERPRETER)'}
+                  {avatarMode === 'hologram'
+                    ? 'ISL HOLOGRAM (DATASET GROUND-TRUTH)'
+                    : avatarMode === '3d_avatar'
+                    ? '3D AVATAR (HUMANOID INTERPRETER)'
+                    : '3D SIGN EMOJIS (VOLUMETRIC PBR)'}
                 </span>
 
                 <div className="flex items-center gap-2">
                   <span className="px-2 py-0.5 rounded-full bg-slate-800/80 border border-slate-700/70 text-slate-300 text-[10px] font-medium">
-                    {avatarMode === 'hologram' ? 'Smooth: ON' : 'Kinematics: 65-Bone'}
+                    {avatarMode === 'hologram'
+                      ? 'Smooth: ON'
+                      : avatarMode === '3d_avatar'
+                      ? 'Kinematics: 65-Bone'
+                      : 'Three.js PBR 60FPS'}
                   </span>
                   {activeToken ? (
                     <span className="px-3 py-0.5 rounded-full bg-orange-500 text-white font-bold text-[11px] shadow-sm animate-pulse">
@@ -5775,6 +5794,63 @@ function MeetingRoomContent() {
                     className="w-full h-full"
                   />
                 </div>
+
+                {/* 3. 3D Animated Volumetric Sign Emoji System */}
+                <div
+                  className={`w-full h-full relative flex flex-col ${
+                    avatarMode === 'emojis' ? 'block' : 'hidden'
+                  }`}
+                >
+                  <div className="flex-1 w-full relative min-h-[220px]">
+                    <SignEmoji3DViewer
+                      emojiId={selectedSignEmojiId}
+                      interactive={true}
+                      autoRotate={false}
+                      className="w-full h-full"
+                    />
+                  </div>
+
+                  {/* Sign Emoji Carousel Strip */}
+                  <div className="p-2.5 bg-slate-950/95 border-t border-slate-800/80 shrink-0">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-[10px] font-mono text-slate-400 uppercase font-semibold">
+                        Select 3D Sign Emoji:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const emoji = SIGN_EMOJIS_LIST.find((e) => e.id === selectedSignEmojiId);
+                          if (emoji) triggerSignReaction(emoji);
+                        }}
+                        className="px-2.5 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[10px] font-mono font-bold flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <Send className="w-3 h-3" />
+                        <span>Send to Call</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin pb-1">
+                      {SIGN_EMOJIS_LIST.map((emoji) => (
+                        <button
+                          key={emoji.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedSignEmojiId(emoji.id);
+                            triggerSignReaction(emoji);
+                          }}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs whitespace-nowrap transition cursor-pointer border ${
+                            selectedSignEmojiId === emoji.id
+                              ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/30'
+                              : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700/80'
+                          }`}
+                        >
+                          <span className="text-sm">{emoji.icon}</span>
+                          <span className="font-mono text-[11px]">{emoji.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Clean Live Speech Subtitle Strip (Only shown when speaking or processing) */}
@@ -5833,8 +5909,9 @@ function MeetingRoomContent() {
               </div>
             </div>
           );
+        };
 
-          return (
+        return (
             <main className="flex-1 flex overflow-hidden p-3 sm:p-4 gap-3 sm:gap-4 relative bg-slate-950">
               {/* LAYOUT 1: SCREEN SHARING ACTIVE (Google Meet Presentation Mode) */}
               {isPresenting && activePresenter ? (
@@ -5941,32 +6018,91 @@ function MeetingRoomContent() {
                         )}
                       </div>
                     ) : (
-                      /* 1 to 12+ Participants: Responsive Google Meet Grid */
-                      <div
-                        className={`w-full h-full grid gap-3 sm:gap-4 ${
-                          remoteList.length === 1
-                            ? 'grid-cols-1 md:grid-cols-2 auto-rows-fr'
-                            : remoteList.length <= 3
-                            ? 'grid-cols-1 sm:grid-cols-2 auto-rows-fr'
-                            : remoteList.length <= 5
-                            ? 'grid-cols-2 sm:grid-cols-3 auto-rows-fr'
-                            : remoteList.length <= 8
-                            ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 auto-rows-fr'
-                            : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 auto-rows-fr'
-                        }`}
-                      >
-                        {/* Local User Tile */}
-                        <div className="w-full h-full min-h-[220px]">
-                          {renderLocalTile(false)}
-                        </div>
+                      /* 1 to 30+ Participants: Intelligent Adaptive Paginated Grid */
+                      (() => {
+                        const TILES_PER_PAGE = 12;
+                        const totalParticipants = 1 + remoteList.length;
+                        const totalPages = Math.max(1, Math.ceil(totalParticipants / TILES_PER_PAGE));
+                        const activePage = Math.min(gridPage, totalPages);
 
-                        {/* All Remote Participants */}
-                        {remoteList.map((p) => (
-                          <div key={p.socketId} className="w-full h-full min-h-[220px]">
-                            <RemoteParticipantTile key={p.socketId} participant={p} />
+                        // If on Page 1, slot 1 is local user, remaining 11 slots are remotes
+                        // If on Page 2+, all 12 slots are remotes
+                        const remotesOnThisPage = activePage === 1
+                          ? remoteList.slice(0, TILES_PER_PAGE - 1)
+                          : remoteList.slice((activePage - 1) * TILES_PER_PAGE - 1, activePage * TILES_PER_PAGE - 1);
+
+                        const totalTilesOnThisPage = (activePage === 1 ? 1 : 0) + remotesOnThisPage.length;
+
+                        return (
+                          <div className="w-full h-full flex flex-col justify-between overflow-hidden">
+                            <div
+                              className={`w-full flex-1 grid gap-2.5 sm:gap-3.5 p-2 sm:p-3 overflow-hidden ${
+                                totalTilesOnThisPage === 1
+                                  ? 'grid-cols-1 auto-rows-fr'
+                                  : totalTilesOnThisPage === 2
+                                  ? 'grid-cols-1 md:grid-cols-2 auto-rows-fr'
+                                  : totalTilesOnThisPage <= 4
+                                  ? 'grid-cols-2 grid-rows-2 auto-rows-fr'
+                                  : totalTilesOnThisPage <= 6
+                                  ? 'grid-cols-2 sm:grid-cols-3 grid-rows-2 sm:grid-rows-2 auto-rows-fr'
+                                  : totalTilesOnThisPage <= 9
+                                  ? 'grid-cols-3 grid-rows-3 auto-rows-fr'
+                                  : 'grid-cols-3 sm:grid-cols-4 grid-rows-3 sm:grid-rows-3 auto-rows-fr'
+                              }`}
+                            >
+                              {/* Local User Tile (Visible on Page 1) */}
+                              {activePage === 1 && (
+                                <div className="w-full h-full min-h-0 flex flex-col">
+                                  {renderLocalTile(false)}
+                                </div>
+                              )}
+
+                              {/* Remote Participants for Active Page */}
+                              {remotesOnThisPage.map((p) => (
+                                <div key={p.socketId} className="w-full h-full min-h-0 flex flex-col">
+                                  <RemoteParticipantTile key={p.socketId} participant={p} />
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Pagination Dock for Large 12 to 30+ Person Meetings */}
+                            {totalPages > 1 && (
+                              <div className="py-2 px-4 flex items-center justify-between shrink-0 bg-slate-950/90 border-t border-slate-800 text-xs no-print">
+                                <div className="flex items-center gap-2 text-slate-400 font-mono text-[11px]">
+                                  <Users className="w-3.5 h-3.5 text-orange-400" />
+                                  <span>{totalParticipants} People in Meeting</span>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    type="button"
+                                    disabled={activePage === 1}
+                                    onClick={() => setGridPage((p) => Math.max(1, p - 1))}
+                                    className="px-3 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-30 text-white font-mono text-xs border border-slate-700 transition cursor-pointer"
+                                  >
+                                    ◀ Previous
+                                  </button>
+                                  <span className="font-mono text-slate-300 text-xs">
+                                    Page <strong className="text-orange-400">{activePage}</strong> of <strong>{totalPages}</strong>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    disabled={activePage === totalPages}
+                                    onClick={() => setGridPage((p) => Math.min(totalPages, p + 1))}
+                                    className="px-3 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-30 text-white font-mono text-xs border border-slate-700 transition cursor-pointer"
+                                  >
+                                    Next ▶
+                                  </button>
+                                </div>
+
+                                <div className="hidden sm:block text-[11px] font-mono text-emerald-400">
+                                  <span>● Auto-Optimized Grid</span>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        ))}
-                      </div>
+                        );
+                      })()
                     )}
                   </div>
 
@@ -5999,6 +6135,24 @@ function MeetingRoomContent() {
                               ISL CAPTION
                             </span>
                             <span className="text-slate-100 font-medium">&quot;{currentSentence}&quot;</span>
+
+                            {/* Dynamic 3D Sign Emoji Badge */}
+                            {(() => {
+                              const lower = (currentSentence || '').toLowerCase();
+                              const matchedEmoji = SIGN_EMOJIS_LIST.find((e) =>
+                                lower.includes(e.id) || lower.includes(e.name.toLowerCase().split(' ')[0])
+                              );
+                              if (!matchedEmoji) return null;
+                              return (
+                                <span
+                                  key={matchedEmoji.id}
+                                  className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/50 text-amber-300 font-mono text-[10px] font-bold shadow-xs animate-in zoom-in-90 duration-200"
+                                >
+                                  <span>{matchedEmoji.icon}</span>
+                                  <span>3D Sign: {matchedEmoji.name}</span>
+                                </span>
+                              );
+                            })()}
                           </div>
                           {currentAction && (currentAction.source === 'fingerspell_letter' || currentAction.type === 'letter') && (
                             <div className="flex items-center gap-1.5 flex-wrap font-mono text-xs pt-0.5">
@@ -6098,6 +6252,28 @@ function MeetingRoomContent() {
 
             {/* Chat Input Bar */}
             <div className="p-3 border-t border-slate-800 bg-slate-950 space-y-2">
+              {/* Quick 3D Sign Emoji Sticker Strip */}
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin px-1 py-0.5">
+                <span className="text-[10px] font-mono text-amber-400 font-bold uppercase shrink-0">
+                  Stickers:
+                </span>
+                {SIGN_EMOJIS_LIST.map((emoji) => (
+                  <button
+                    key={emoji.id}
+                    type="button"
+                    onClick={() => {
+                      setChatDrawerInput(`[${emoji.icon} ${emoji.name}]`);
+                      triggerSignReaction(emoji);
+                    }}
+                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-[11px] flex items-center gap-1 shrink-0 transition cursor-pointer"
+                    title={`Send ${emoji.name} sticker`}
+                  >
+                    <span>{emoji.icon}</span>
+                    <span className="font-mono text-[10px]">{emoji.name.split(' ')[0]}</span>
+                  </button>
+                ))}
+              </div>
+
               <label className="flex items-center gap-1.5 cursor-pointer px-1">
                 <input
                   type="checkbox"
@@ -6136,7 +6312,22 @@ function MeetingRoomContent() {
 
       {/* ─── 4. Quick-Sentence Drawer (Signer Daily Voice & 1-Click Tests) ─────── */}
       {showPresetDrawer && (
-        <div className="px-4 py-3 bg-slate-950 border-t border-slate-800 flex flex-col gap-2.5 shrink-0 z-30">
+        <div className="px-4 py-2.5 bg-slate-950 border-t border-slate-800 flex flex-col gap-2 shrink-0 z-30 shadow-xl animate-in slide-in-from-bottom-2 duration-150">
+          <div className="flex items-center justify-between pb-1 border-b border-slate-800/80">
+            <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5 font-mono">
+              <Sparkles className="w-3.5 h-3.5 text-orange-400" />
+              <span>Voice Shortcuts &amp; Avatar Motion Tests</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowPresetDrawer(false)}
+              className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              title="Close Drawer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           {/* Row 1: Deaf Signer Quick Spoken Responses */}
           <div className="flex items-center gap-2 overflow-x-auto scrollbar-none no-scrollbar">
             <span className="text-[11px] font-mono font-semibold text-slate-400 uppercase shrink-0 flex items-center gap-1.5">
@@ -6267,14 +6458,60 @@ function MeetingRoomContent() {
             <Hand className="w-5 h-5" />
           </button>
 
-          {/* Emoji Reaction Button */}
-          <button
-            onClick={() => executeTranslateAndSign('happy')}
-            className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer bg-[#3c4043] hover:bg-[#474a4e] text-white"
-            title="Send Reaction (Happy)"
-          >
-            <Smile className="w-5 h-5" />
-          </button>
+          {/* Emoji Reaction Button with 3D Sign Reactions Popover */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowSignEmojiPicker((prev) => !prev)}
+              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                showSignEmojiPicker
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/40 ring-2 ring-amber-400/50'
+                  : 'bg-[#3c4043] hover:bg-[#474a4e] text-white'
+              }`}
+              title="Send 3D Sign Language Emoji Reaction"
+            >
+              <Smile className="w-5 h-5" />
+            </button>
+
+            {/* WhatsApp / Apple Style Quick 3D Sign Reaction Popover */}
+            {showSignEmojiPicker && (
+              <div className="absolute bottom-14 left-1/2 -translate-x-1/2 bg-slate-900/98 backdrop-blur-2xl border border-slate-700/90 rounded-2xl p-2.5 shadow-2xl z-50 flex items-center gap-2 min-w-max animate-in fade-in zoom-in-95 duration-150">
+                <div className="text-[10px] font-mono text-amber-400 font-bold px-2 border-r border-slate-700 uppercase">
+                  3D Signs
+                </div>
+                {SIGN_EMOJIS_LIST.map((emoji) => (
+                  <button
+                    key={emoji.id}
+                    type="button"
+                    onClick={() => {
+                      triggerSignReaction(emoji);
+                      setShowSignEmojiPicker(false);
+                    }}
+                    className="group relative flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-slate-800 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                    title={`${emoji.name}: ${emoji.description}`}
+                  >
+                    <span className="text-2xl filter drop-shadow-md group-hover:scale-110 transition-transform">
+                      {emoji.icon}
+                    </span>
+                    <span className="text-[10px] font-medium text-slate-300 group-hover:text-amber-300">
+                      {emoji.name.split(' ')[0]}
+                    </span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAvatarMode('emojis');
+                    setShowSignEmojiPicker(false);
+                  }}
+                  className="ml-1 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[10px] font-mono font-bold flex items-center gap-1 transition cursor-pointer"
+                >
+                  <span>Full 3D</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* End Meeting Button (Google Meet Red Rounded Pill) */}
           <button
@@ -6335,6 +6572,15 @@ function MeetingRoomContent() {
             title="Meeting Details & Invite Link"
           >
             <Share2 className="w-4 h-4" />
+          </button>
+
+          {/* QR Code Scan to Join */}
+          <button
+            onClick={() => setShowQrInviteModal(true)}
+            className="w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer bg-gradient-to-tr from-orange-500/20 to-amber-500/20 border border-orange-500/40 text-orange-400 hover:text-white hover:bg-orange-500 shadow-sm"
+            title="Display QR Code for Instant Phone Scan to Join"
+          >
+            <QrCode className="w-4 h-4" />
           </button>
 
           {/* Participants List Toggle */}
@@ -6680,7 +6926,19 @@ function MeetingRoomContent() {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 pt-1 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowShareModal(false);
+                  setShowQrInviteModal(true);
+                }}
+                className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-orange-500/20 to-amber-500/20 hover:from-orange-500/30 hover:to-amber-500/30 border border-orange-500/40 text-orange-300 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition shadow-sm"
+              >
+                <QrCode className="w-4 h-4 text-orange-400" />
+                <span>Show QR Code</span>
+              </button>
+
               <button
                 onClick={handleNativeShare}
                 className="flex-1 py-3 px-4 rounded-xl bg-orange-500 hover:bg-orange-400 text-white font-bold text-xs transition shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 cursor-pointer"
@@ -6945,6 +7203,10 @@ function MeetingRoomContent() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
           <style>{`
             @media print {
+              @page {
+                size: A4 portrait;
+                margin: 12mm 15mm;
+              }
               body * {
                 visibility: hidden !important;
               }
@@ -6958,9 +7220,21 @@ function MeetingRoomContent() {
                 width: 100% !important;
                 background: #ffffff !important;
                 color: #0f172a !important;
-                padding: 32px !important;
+                padding: 12px 16px !important;
                 font-family: ui-sans-serif, system-ui, -apple-system, sans-serif !important;
                 box-shadow: none !important;
+                border: none !important;
+              }
+              #clinical-record-print-root div,
+              #clinical-record-print-root p,
+              #clinical-record-print-root span,
+              #clinical-record-print-root h1,
+              #clinical-record-print-root h2,
+              #clinical-record-print-root h3,
+              #clinical-record-print-root h4 {
+                color: #0f172a !important;
+                background-color: transparent !important;
+                border-color: #cbd5e1 !important;
               }
               .no-print {
                 display: none !important;
@@ -6968,40 +7242,43 @@ function MeetingRoomContent() {
               .print-border {
                 border: 1px solid #cbd5e1 !important;
               }
+              .print-bg-slate {
+                background-color: #f8fafc !important;
+              }
             }
           `}</style>
           
-          <div className="bg-slate-900 border border-slate-700/80 rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-slate-100">
-            {/* Modal Header */}
-            <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0 bg-slate-950/60 no-print">
+          <div className="bg-white/98 backdrop-blur-2xl border border-slate-200/90 rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-slate-800">
+            {/* Modal Header (Matching Platform Theme) */}
+            <div className="p-4 sm:p-5 border-b border-slate-200/80 flex items-center justify-between gap-3 shrink-0 bg-slate-50/90 no-print">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
-                  <FileText className="w-5 h-5 text-emerald-400" />
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-orange-500 to-amber-400 text-white flex items-center justify-center font-black shadow-md shadow-orange-500/20 shrink-0">
+                  <FileText className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-white flex items-center gap-2">
-                    <span>Bilingual Meeting Minutes &amp; Clinical Record</span>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-mono text-[10px]">
+                  <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                    <span>Bilingual Meeting Minutes &amp; Clinical Record (MOM)</span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-orange-50 border border-orange-200 text-orange-600 font-mono text-[10px] font-bold">
                       Live Ledger
                     </span>
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Structured Clinical Notes bridging Deaf Signers (ISL) &amp; Hearing Speakers (Voice)
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Certified Clinical Notes bridging Deaf Signers (ISL) &amp; Hearing Practitioners (Voice)
                   </p>
                 </div>
               </div>
 
               {/* Action Toolbar */}
               <div className="flex items-center gap-2">
-                {/* 1-Click Print / Save PDF */}
+                {/* 1-Click Print / Save PDF (Signature Primary Theme Style) */}
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-xs flex items-center gap-1.5 transition shadow-md shadow-orange-500/25 cursor-pointer active:scale-95"
                   title="Print or Save as PDF (A4 Clinical Format)"
                 >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Print / Save PDF</span>
+                  <Printer className="w-4 h-4" />
+                  <span className="hidden sm:inline">Print / Save PDF (A4)</span>
                 </button>
 
                 {/* Copy Markdown */}
@@ -7009,7 +7286,7 @@ function MeetingRoomContent() {
                   type="button"
                   onClick={() => {
                     const formatNotesAsMarkdown = () => {
-                      let md = `# Bilingual Meeting Minutes & Clinical Record\n\n`;
+                      let md = `# Bilingual Meeting Minutes & Clinical Record (MOM)\n\n`;
                       md += `- **Room ID**: ${roomId}\n`;
                       md += `- **Date**: ${new Date().toLocaleDateString()}\n`;
                       md += `- **Session Duration**: ${formatTime(meetingDurationSec)}\n`;
@@ -7065,10 +7342,10 @@ function MeetingRoomContent() {
                       setTimeout(() => setToastMessage(null), 3000);
                     }
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 transition border border-slate-700 cursor-pointer"
+                  className="px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs flex items-center gap-1.5 transition border border-slate-200 shadow-xs cursor-pointer"
                   title="Copy formatted Markdown to Clipboard"
                 >
-                  <Copy className="w-3.5 h-3.5 text-slate-300" />
+                  <Copy className="w-3.5 h-3.5 text-slate-500" />
                   <span className="hidden sm:inline">Copy Markdown</span>
                 </button>
 
@@ -7077,8 +7354,8 @@ function MeetingRoomContent() {
                   type="button"
                   onClick={() => {
                     let text = `============================================================\n`;
-                    text += `   BILINGUAL MEETING MINUTES & CLINICAL RECORD\n`;
-                    text += `   Bridging Deaf Signers & Hearing Practitioners\n`;
+                    text += `   BILINGUAL MEETING MINUTES & CLINICAL RECORD (MOM)\n`;
+                    text += `   Sanket AI Accessible Telehealth & Meeting Network\n`;
                     text += `============================================================\n\n`;
                     text += `Room Code:         ${roomId}\n`;
                     text += `Date:              ${new Date().toLocaleDateString()}\n`;
@@ -7141,17 +7418,17 @@ function MeetingRoomContent() {
                     setToastMessage('Downloaded Meeting Minutes (.txt)');
                     setTimeout(() => setToastMessage(null), 3000);
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 transition border border-slate-700 cursor-pointer"
+                  className="px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs flex items-center gap-1.5 transition border border-slate-200 shadow-xs cursor-pointer"
                   title="Download Raw .txt Document"
                 >
-                  <Download className="w-3.5 h-3.5 text-slate-300" />
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
                   <span className="hidden sm:inline">Export .txt</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setShowMeetingNotesModal(false)}
-                  className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -7159,64 +7436,76 @@ function MeetingRoomContent() {
             </div>
 
             {/* Printable Document Root */}
-            <div id="clinical-record-print-root" className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-6 scrollbar-thin">
-              {/* Document Letterhead */}
-              <div className="border-b border-slate-800 pb-5">
+            <div id="clinical-record-print-root" className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-6 scrollbar-thin bg-white text-slate-900">
+              {/* Document Letterhead (Formatted for Official PDF Export) */}
+              <div className="border-b border-slate-200 pb-5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-                      <Stethoscope className="w-5 h-5 text-emerald-400" />
-                      <span>Accessible Clinical &amp; Meeting Record</span>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className="w-7 h-7 rounded-lg bg-orange-500 flex items-center justify-center text-white font-black text-xs shadow-sm">
+                        S
+                      </div>
+                      <span className="font-extrabold text-base tracking-tight text-slate-900">
+                        Sanket<span className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block ml-0.5" />
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-600 border border-slate-200 bg-slate-50 rounded px-2 py-0.5">
+                        RPWD Compliant Dual-Stream
+                      </span>
+                    </div>
+                    <h2 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+                      <Stethoscope className="w-5 h-5 text-emerald-600" />
+                      <span>Clinical Consultation Minutes &amp; Transcript (MOM)</span>
                     </h2>
-                    <p className="text-xs text-slate-400 font-mono mt-1">
+                    <p className="text-xs text-slate-500 font-mono mt-0.5">
                       Certified Dual-Stream Transcript &bull; Indian Sign Language (ISL) &bull; Vocal Speech
                     </p>
                   </div>
-                  <div className="text-right font-mono text-xs text-slate-400">
-                    <div>Session ID: <strong className="text-slate-200">{roomId}</strong></div>
-                    <div>Date: <span className="text-slate-300">{new Date().toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</span></div>
+                  <div className="text-right font-mono text-xs text-slate-500 space-y-0.5">
+                    <div>Session ID: <strong className="text-slate-900 font-bold">{roomId}</strong></div>
+                    <div>Date: <span className="text-slate-700">{new Date().toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</span></div>
+                    <div className="text-[10px] text-emerald-600 font-bold">STATUS: OFFICIAL RECORD</div>
                   </div>
                 </div>
               </div>
 
               {/* 4 Metadata Summary Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1">
-                  <div className="flex items-center gap-1.5 text-slate-400 text-[11px] font-mono">
-                    <Clock className="w-3 h-3 text-orange-400" />
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                  <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-mono">
+                    <Clock className="w-3 h-3 text-orange-500" />
                     <span>Duration</span>
                   </div>
-                  <div className="text-base font-bold text-white font-mono">
+                  <div className="text-base font-extrabold text-slate-900 font-mono">
                     {formatTime(meetingDurationSec)}
                   </div>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1">
-                  <div className="flex items-center gap-1.5 text-slate-400 text-[11px] font-mono">
-                    <Hand className="w-3 h-3 text-orange-400" />
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                  <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-mono">
+                    <Hand className="w-3 h-3 text-orange-500" />
                     <span>Deaf Signer</span>
                   </div>
-                  <div className="text-sm font-semibold text-orange-300 truncate">
+                  <div className="text-sm font-bold text-orange-600 truncate">
                     {effectiveDisplayNameRef.current || displayName || 'Signer'}
                   </div>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1">
-                  <div className="flex items-center gap-1.5 text-slate-400 text-[11px] font-mono">
-                    <Mic className="w-3 h-3 text-sky-400" />
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                  <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-mono">
+                    <Mic className="w-3 h-3 text-sky-500" />
                     <span>Speaker / Doctor</span>
                   </div>
-                  <div className="text-sm font-semibold text-sky-300 truncate">
+                  <div className="text-sm font-bold text-sky-600 truncate">
                     {remoteParticipants.values().next().value?.displayName || 'Practitioner'}
                   </div>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1">
-                  <div className="flex items-center gap-1.5 text-slate-400 text-[11px] font-mono">
-                    <Activity className="w-3 h-3 text-emerald-400" />
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                  <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-mono">
+                    <Activity className="w-3 h-3 text-emerald-500" />
                     <span>Exchanges</span>
                   </div>
-                  <div className="text-base font-bold text-emerald-300 font-mono">
+                  <div className="text-base font-extrabold text-emerald-600 font-mono">
                     {meetingNotesLog.length} items
                   </div>
                 </div>
@@ -7224,8 +7513,8 @@ function MeetingRoomContent() {
 
               {/* Extracted Key Clinical Takeaways & Prescriptions */}
               <div className="space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   <span>Key Clinical Takeaways &amp; Prescriptions</span>
                 </h4>
 
@@ -7236,8 +7525,8 @@ function MeetingRoomContent() {
 
                   if (prescriptions.length === 0 && medical.length === 0 && actionItems.length === 0) {
                     return (
-                      <div className="p-4 rounded-2xl bg-slate-950/50 border border-slate-800/80 text-xs text-slate-400 flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4 text-slate-500 shrink-0" />
+                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 flex items-center gap-2.5">
+                        <ShieldCheck className="w-4 h-4 text-slate-400 shrink-0" />
                         <span>
                           General dialogue recorded. As medication names (tablets, dosages), symptoms, or follow-up plans are spoken or signed, they will automatically be categorized here.
                         </span>
@@ -7248,18 +7537,18 @@ function MeetingRoomContent() {
                   return (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {prescriptions.length > 0 && (
-                        <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 space-y-2">
-                          <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                        <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 space-y-2">
+                          <div className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
                             <span>Prescriptions &amp; Dosages ({prescriptions.length})</span>
                           </div>
-                          <ul className="space-y-1.5 text-xs text-slate-200">
+                          <ul className="space-y-1.5 text-xs text-slate-800">
                             {prescriptions.map((p) => (
                               <li key={p.id} className="flex items-start gap-2">
-                                <span className="text-emerald-400 font-mono font-bold">&bull;</span>
+                                <span className="text-emerald-600 font-mono font-bold">&bull;</span>
                                 <div>
-                                  <span className="font-semibold text-white">{p.translatedContent || p.originalContent}</span>
-                                  <span className="text-[10px] text-slate-400 ml-2 font-mono">[{p.timestamp} &bull; {p.speaker}]</span>
+                                  <span className="font-semibold text-slate-900">{p.translatedContent || p.originalContent}</span>
+                                  <span className="text-[10px] text-slate-500 ml-2 font-mono">[{p.timestamp} &bull; {p.speaker}]</span>
                                 </div>
                               </li>
                             ))}
@@ -7268,18 +7557,18 @@ function MeetingRoomContent() {
                       )}
 
                       {medical.length > 0 && (
-                        <div className="p-4 rounded-2xl bg-sky-950/30 border border-sky-500/30 space-y-2">
-                          <div className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-sky-400" />
+                        <div className="p-4 rounded-2xl bg-sky-50/80 border border-sky-200 space-y-2">
+                          <div className="text-xs font-bold text-sky-800 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-sky-500" />
                             <span>Symptoms &amp; Clinical Notes ({medical.length})</span>
                           </div>
-                          <ul className="space-y-1.5 text-xs text-slate-200">
+                          <ul className="space-y-1.5 text-xs text-slate-800">
                             {medical.map((m) => (
                               <li key={m.id} className="flex items-start gap-2">
-                                <span className="text-sky-400 font-mono font-bold">&bull;</span>
+                                <span className="text-sky-600 font-mono font-bold">&bull;</span>
                                 <div>
-                                  <span className="font-semibold text-white">{m.translatedContent || m.originalContent}</span>
-                                  <span className="text-[10px] text-slate-400 ml-2 font-mono">[{m.timestamp} &bull; {m.speaker}]</span>
+                                  <span className="font-semibold text-slate-900">{m.translatedContent || m.originalContent}</span>
+                                  <span className="text-[10px] text-slate-500 ml-2 font-mono">[{m.timestamp} &bull; {m.speaker}]</span>
                                 </div>
                               </li>
                             ))}
@@ -7288,18 +7577,18 @@ function MeetingRoomContent() {
                       )}
 
                       {actionItems.length > 0 && (
-                        <div className="p-4 rounded-2xl bg-orange-950/30 border border-orange-500/30 space-y-2 md:col-span-2">
-                          <div className="text-xs font-bold text-orange-300 flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-orange-400" />
+                        <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 space-y-2 md:col-span-2">
+                          <div className="text-xs font-bold text-amber-800 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-amber-500" />
                             <span>Action Items &amp; Next Steps ({actionItems.length})</span>
                           </div>
-                          <ul className="space-y-1.5 text-xs text-slate-200">
+                          <ul className="space-y-1.5 text-xs text-slate-800">
                             {actionItems.map((a) => (
                               <li key={a.id} className="flex items-start gap-2">
-                                <span className="text-orange-400 font-mono font-bold">&bull;</span>
+                                <span className="text-amber-600 font-mono font-bold">&bull;</span>
                                 <div>
-                                  <span className="font-semibold text-white">{a.translatedContent || a.originalContent}</span>
-                                  <span className="text-[10px] text-slate-400 ml-2 font-mono">[{a.timestamp} &bull; {a.speaker}]</span>
+                                  <span className="font-semibold text-slate-900">{a.translatedContent || a.originalContent}</span>
+                                  <span className="text-[10px] text-slate-500 ml-2 font-mono">[{a.timestamp} &bull; {a.speaker}]</span>
                                 </div>
                               </li>
                             ))}
@@ -7314,20 +7603,20 @@ function MeetingRoomContent() {
               {/* Chronological Bilingual Transcript Ledger */}
               <div className="space-y-3 pt-2">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-emerald-400" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-emerald-600" />
                     <span>Chronological Bilingual Transcript Ledger</span>
                   </h4>
-                  <span className="text-[11px] font-mono text-slate-400">
+                  <span className="text-[11px] font-mono text-slate-500">
                     {meetingNotesLog.length} Recorded Exchanges
                   </span>
                 </div>
 
                 {meetingNotesLog.length === 0 ? (
-                  <div className="p-8 rounded-2xl bg-slate-950/60 border border-slate-800 text-center space-y-2">
-                    <FileText className="w-8 h-8 text-slate-600 mx-auto" />
-                    <p className="text-sm font-semibold text-slate-300">No Dialogue Recorded Yet</p>
-                    <p className="text-xs text-slate-400 max-w-md mx-auto">
+                  <div className="p-8 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-2">
+                    <FileText className="w-8 h-8 text-slate-400 mx-auto" />
+                    <p className="text-sm font-semibold text-slate-800">No Dialogue Recorded Yet</p>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
                       Speak into the microphone or sign in front of the camera. The system will automatically build your structured bilingual clinical record here in real time.
                     </p>
                   </div>
@@ -7341,38 +7630,38 @@ function MeetingRoomContent() {
                       return (
                         <div
                           key={entry.id || idx}
-                          className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/90 hover:border-slate-700 transition flex flex-col sm:flex-row sm:items-start justify-between gap-3"
+                          className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-slate-300 transition flex flex-col sm:flex-row sm:items-start justify-between gap-3 shadow-xs"
                         >
                           <div className="space-y-1.5 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-[10px] font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded-md">
+                              <span className="text-[10px] font-mono text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">
                                 {entry.timestamp}
                               </span>
-                              <span className="font-bold text-xs text-white">
+                              <span className="font-bold text-xs text-slate-900">
                                 {entry.speaker}
                               </span>
                               <span
                                 className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-semibold ${
                                   isSigner
-                                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
-                                    : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                                    ? 'bg-orange-50 text-orange-700 border border-orange-200'
+                                    : 'bg-sky-50 text-sky-700 border border-sky-200'
                                 }`}
                               >
                                 {isSigner ? 'ISL Signer' : 'Voice Speaker'}
                               </span>
                               {entry.category && entry.category !== 'general' && (
-                                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase">
+                                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase font-semibold">
                                   {entry.category.replace('_', ' ')}
                                 </span>
                               )}
                             </div>
 
                             <div className="space-y-1 pt-0.5">
-                              <div className="text-sm font-medium text-slate-100 leading-relaxed">
+                              <div className="text-sm font-semibold text-slate-900 leading-relaxed">
                                 {spoken}
                               </div>
-                              <div className="text-xs font-mono text-slate-400 bg-black/40 px-2.5 py-1 rounded-lg border border-white/5 inline-block">
-                                <span className="text-orange-400/90 font-semibold mr-1.5">ISL Articulation:</span>
+                              <div className="text-xs font-mono text-orange-900 bg-orange-50/80 px-2.5 py-1 rounded-lg border border-orange-200 inline-block">
+                                <span className="text-orange-700 font-semibold mr-1.5">ISL Articulation:</span>
                                 <span>{isl}</span>
                               </div>
                             </div>
@@ -7383,15 +7672,46 @@ function MeetingRoomContent() {
                   </div>
                 )}
               </div>
+
+              {/* Official Verification Sign-off Block for Print / Download */}
+              <div className="mt-8 pt-6 border-t border-slate-200 space-y-4">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold">
+                  Document Sign-off &amp; Compliance Verification
+                </div>
+                <div className="grid grid-cols-2 gap-8 text-xs">
+                  <div className="space-y-1">
+                    <p className="text-slate-500 font-mono text-[11px] uppercase">
+                      Attending Clinician / Doctor
+                    </p>
+                    <div className="h-10 border-b border-dashed border-slate-400 flex items-end pb-1 font-cursive text-base text-slate-800">
+                      {remoteParticipants.values().next().value?.displayName || 'Practitioner / Doctor'}
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-mono">Signature &amp; Verification Date</p>
+                  </div>
+                  <div className="space-y-1 text-right">
+                    <p className="text-slate-500 font-mono text-[11px] uppercase">
+                      Deaf Signer / Patient
+                    </p>
+                    <div className="h-10 border-b border-dashed border-slate-400 flex items-end justify-end pb-1 font-cursive text-base text-orange-600">
+                      {effectiveDisplayNameRef.current || displayName || 'Signer'}
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-mono">Dual-Stream ISL Verified Record</p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 font-mono text-center pt-2">
+                  Generated by Sanket AI On-Device Neural Translation System &bull; Cryptographically Bound to Room {roomId}
+                </p>
+              </div>
+
             </div>
 
             {/* Modal Footer Note */}
-            <div className="p-3 sm:p-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 shrink-0 bg-slate-950/60 no-print">
+            <div className="p-3 sm:p-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 shrink-0 bg-slate-50/90 no-print">
               <span>Ready for EHR, Hospital Management, or Meeting Archives.</span>
               <button
                 type="button"
                 onClick={() => setShowMeetingNotesModal(false)}
-                className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold transition cursor-pointer"
+                className="px-4 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold transition cursor-pointer"
               >
                 Close
               </button>
@@ -7399,6 +7719,13 @@ function MeetingRoomContent() {
           </div>
         </div>
       )}
+
+      {/* ─── Instant QR Code Invite & Direct Phone Scan Modal ─────────────── */}
+      <QrInviteModal
+        isOpen={showQrInviteModal}
+        onClose={() => setShowQrInviteModal(false)}
+        roomId={roomId}
+      />
     </div>
   );
 }

@@ -26,24 +26,22 @@ export const Navbar: React.FC = () => {
         </Link>
 
         {/* Center Desktop Navigation Links */}
-        <nav className="hidden lg:flex items-center gap-6 text-xs font-bold text-slate-300">
+        <nav className="hidden lg:flex items-center gap-6 text-xs font-semibold text-slate-300">
           <Link href="/" className="text-white hover:text-orange-400 transition">
             Home
           </Link>
           <Link href="/#features" className="hover:text-orange-400 transition">
             Features
           </Link>
-          <Link href="/#solutions" className="hover:text-orange-400 transition">
-            Solutions
-          </Link>
           <Link href="/#how-it-works" className="hover:text-orange-400 transition">
             How It Works
           </Link>
-          <Link href="/test-avatar" className="text-orange-400 hover:text-orange-300 font-extrabold transition flex items-center gap-1">
-            <span>3D Sign Studio</span>
+          <Link href="/call-center" className="text-orange-400 hover:text-orange-300 transition flex items-center gap-1.5 font-bold">
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse inline-block"></span>
+            <span>Telecom Relay</span>
           </Link>
-          <Link href="/download" className="text-slate-300 hover:text-white transition flex items-center gap-1">
-            <span>Download</span>
+          <Link href="/download" className="text-slate-300 hover:text-white transition">
+            Download
           </Link>
           {user && (
             <Link href="/dashboard" className="hover:text-orange-400 transition">
@@ -152,6 +150,10 @@ export const Navbar: React.FC = () => {
             <Link onClick={() => setMobileMenuOpen(false)} href="/download" className="px-3 py-2 rounded-xl text-orange-400 font-bold hover:bg-slate-800 transition flex items-center justify-between">
               <span>Download Desktop & Mobile App</span>
               <span className="text-[10px] uppercase font-black px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300">New</span>
+            </Link>
+            <Link onClick={() => setMobileMenuOpen(false)} href="/call-center" className="px-3 py-2 rounded-xl text-emerald-400 font-extrabold hover:bg-slate-800 transition flex items-center justify-between">
+              <span>📞 BPO Call Center (Deaf Agent)</span>
+              <span className="text-[10px] uppercase font-black px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 animate-pulse">Live</span>
             </Link>
             <Link onClick={() => setMobileMenuOpen(false)} href="/#faq" className="px-3 py-2 rounded-xl hover:bg-slate-800 transition">
               Help

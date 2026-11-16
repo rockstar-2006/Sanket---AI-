@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="450" height="240" viewBox="0 0 450 240" style="background-color: #020617; font-family: ui-sans-serif, system-ui;">
+<text x="225.0" y="25" fill="#f8fafc" font-size="13" font-weight="bold" text-anchor="middle">Accuracy vs Rejection Rate Trade-off (&theta;)</text>
+<line x1="50" y1="40" x2="410" y2="40" stroke="#1e293b" stroke-dasharray="3,3" />
+<line x1="50" y1="90" x2="410" y2="90" stroke="#1e293b" stroke-dasharray="3,3" />
+<line x1="50" y1="140" x2="410" y2="140" stroke="#1e293b" stroke-dasharray="3,3" />
+<line x1="50" y1="190" x2="410" y2="190" stroke="#475569" stroke-width="1.5" />
+<line x1="50" y1="40" x2="50" y2="190" stroke="#475569" stroke-width="1.5" />
+<text x="20" y="44" fill="#94a3b8" font-size="9">100%</text>
+<text x="25" y="94" fill="#94a3b8" font-size="9">75%</text>
+<text x="25" y="144" fill="#94a3b8" font-size="9">50%</text>
+<text x="30" y="194" fill="#94a3b8" font-size="9">0%</text>
+<text x="50" y="208" fill="#94a3b8" font-size="9">0.50</text>
+<text x="140" y="208" fill="#94a3b8" font-size="9">0.60</text>
+<text x="230" y="208" fill="#fb923c" font-size="9" font-weight="bold">&theta;=0.70</text>
+<text x="320" y="208" fill="#94a3b8" font-size="9">0.80</text>
+<text x="400" y="208" fill="#94a3b8" font-size="9">0.95</text>
+<path d="M 50,85 Q 140,68 230,52 T 400,43" fill="none" stroke="#10b981" stroke-width="3" />
+<path d="M 50,185 Q 140,175 230,160 T 400,125" fill="none" stroke="#f97316" stroke-width="3" stroke-dasharray="5,3" />
+<line x1="230" y1="40" x2="230" y2="190" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="2,2" />
+<circle cx="230" cy="52" r="5" fill="#10b981" stroke="#fff" stroke-width="1.5" />
+<circle cx="230" cy="160" r="5" fill="#f97316" stroke="#fff" stroke-width="1.5" />
+<text x="240" y="55" fill="#10b981" font-size="10" font-weight="bold">92.4% Gated Acc</text>
+<text x="240" y="163" fill="#f97316" font-size="10" font-weight="bold">9.3% Rejection</text>
+</svg>

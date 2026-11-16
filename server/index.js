@@ -3,12 +3,14 @@ const next = require('next');
 const { parse } = require('url');
 const { Server } = require('socket.io');
 
-const dev = process.argv.includes('--dev');
-const hostname = '0.0.0.0';
-const port = Number(process.env.PORT || 3000);
-
 const fs = require('fs');
 const path = require('path');
+
+// Auto-detect production build: If .next/BUILD_ID does not exist, run in development mode!
+const hasProductionBuild = fs.existsSync(path.join(__dirname, '..', '.next', 'BUILD_ID'));
+const dev = process.argv.includes('--dev') || !hasProductionBuild;
+const hostname = '0.0.0.0';
+const port = Number(process.env.PORT || 3000);
 
 // Auto-cleanup conflicting duplicate dynamic route slug ('roomCode' !== 'roomId')
 function cleanDuplicateSlugs(dir) {
@@ -31,10 +33,46 @@ function cleanDuplicateSlugs(dir) {
   }
 }
 
+// Auto-cleanup corrupt or empty (0-byte) JSON cache files in .next that cause "Unexpected end of JSON input"
+function cleanCorruptCache(dir) {
+  if (!fs.existsSync(dir)) return;
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        cleanCorruptCache(fullPath);
+      } else if (entry.name.endsWith('.json')) {
+        try {
+          const stats = fs.statSync(fullPath);
+          if (stats.size === 0) {
+            console.log('[Auto-Cleanup] Removing 0-byte corrupt JSON file:', fullPath);
+            fs.unlinkSync(fullPath);
+          } else {
+            const raw = fs.readFileSync(fullPath, 'utf8').trim();
+            if (!raw) {
+              console.log('[Auto-Cleanup] Removing empty JSON file:', fullPath);
+              fs.unlinkSync(fullPath);
+            } else {
+              JSON.parse(raw);
+            }
+          }
+        } catch {
+          console.warn('[Auto-Cleanup] Removing corrupt JSON file:', fullPath);
+          try { fs.unlinkSync(fullPath); } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    // Ignore scan errors
+  }
+}
+
 cleanDuplicateSlugs(path.join(__dirname, '..', 'src', 'app'));
+cleanCorruptCache(path.join(__dirname, '..', '.next'));
 
 // Next.js application setup
-
+console.log(`[Next.js Server] Starting in ${dev ? 'DEVELOPMENT' : 'PRODUCTION'} mode...`);
 const nextApp = next({ dev, hostname, port });
 const handle = nextApp.getRequestHandler();
 
@@ -148,7 +186,15 @@ nextApp.prepare().then(() => {
       }
     }
 
-    await handle(req, res, parsedUrl);
+    try {
+      await handle(req, res, parsedUrl);
+    } catch (err) {
+      console.error('[Next.js Handle Error]', err);
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.end('Internal Server Error');
+      }
+    }
   });
 
   const io = new Server(server, {

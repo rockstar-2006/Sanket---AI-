@@ -1,14 +1,14 @@
 /**
  * Authentic Indian Sign Language (ISL) Gesture Synthesis Engine
  * Generates continuous 3D holistic skeletal landmark frames (33 Pose + 21 LH + 21 RH + 468 Face)
- * matching official ISL ground-truth gestures (Hello, Thank You, Good Morning, How Are You, Alright, etc.).
+ * matching official ISL ground-truth gestures.
  *
- * Guaranteed zero-failure: Always outputs valid, continuous, physiologically anchored frames
- * so the 3D Hologram avatar NEVER freezes in standby.
+ * Produces anatomically natural, fleshy, expressive hand postures that match
+ * Apple 3D Memoji / WhatsApp emoji aesthetics instead of wireframe sticks.
  */
 
 import { FrameLandmarks, Landmark3D, lerp, generateSmoothBridge } from './motionSmoothing';
-import { generateFingerspellFrames, buildHandLandmarks, HandPoseSpec } from './fingerspellingEngine';
+import { generateFingerspellFrames } from './fingerspellingEngine';
 
 // Default upper body pose skeleton (MediaPipe Holistic 33 format)
 function createBasePose(): Landmark3D[] {
@@ -27,21 +27,6 @@ function createBasePose(): Landmark3D[] {
   p[23] = { x: 0.56, y: 0.68, z:  0.00 }; // Left hip
   p[24] = { x: 0.44, y: 0.68, z:  0.00 }; // Right hip
   return p;
-}
-
-// Resting natural hand posture (21 landmarks)
-function createRestHand(wrist: Landmark3D, isLeft: boolean): Landmark3D[] {
-  const dir = isLeft ? 1 : -1;
-  const spec: HandPoseSpec = {
-    groundAngle: -85,
-    thumb: 0.2,
-    index: 0.15,
-    middle: 0.15,
-    ring: 0.15,
-    pinky: 0.15,
-    thumbMode: 'fist',
-  };
-  return buildHandLandmarks(spec, wrist, isLeft);
 }
 
 // Generate animated facial landmark loop (smiling / nodding mouth mesh)
@@ -64,11 +49,69 @@ function createFaceMesh(nose: Landmark3D, mouthOpen = 0.0, smile = 0.5): Landmar
 }
 
 /**
+ * Natural 21-Joint 3D Hand Pose Generator
+ * Generates physiologically graceful, curved fingers with anatomical palm proportions.
+ */
+export function buildNaturalHandPose(
+  wristPos: [number, number, number],
+  fingerCurls: [number, number, number, number, number], // [thumb, index, middle, ring, pinky] 0 = curled into fist, 1 = extended
+  handRotation: [number, number, number] = [0, 0, 0],
+  isLeftHand = false
+): Landmark3D[] {
+  const points: Landmark3D[] = [];
+  const [wx, wy, wz] = wristPos;
+
+  // Joint 0: Wrist
+  points.push({ x: wx, y: wy, z: wz });
+
+  // Natural human hand finger base spread angles & segment lengths
+  const fingerConfigs = [
+    { baseAngle: 0.68, length: 0.11, curl: fingerCurls[0] }, // Thumb
+    { baseAngle: 0.25, length: 0.15, curl: fingerCurls[1] }, // Index
+    { baseAngle: 0.04, length: 0.16, curl: fingerCurls[2] }, // Middle
+    { baseAngle: -0.18, length: 0.14, curl: fingerCurls[3] }, // Ring
+    { baseAngle: -0.38, length: 0.11, curl: fingerCurls[4] }, // Pinky
+  ];
+
+  const mirrorX = isLeftHand ? -1 : 1;
+
+  fingerConfigs.forEach((cfg) => {
+    const angle = cfg.baseAngle * mirrorX + handRotation[2];
+    const curl = Math.max(0, Math.min(1, cfg.curl)); // 1 = straight, 0 = tucked into palm
+
+    // 4 segments per finger: MCP [1], PIP [2], DIP [3], TIP [4]
+    for (let seg = 1; seg <= 4; seg++) {
+      const segRatio = seg / 4;
+      const straightExt = cfg.length * segRatio;
+      const bendFactor = (1 - curl) * segRatio * 0.08;
+
+      const px = wx + Math.sin(angle) * straightExt;
+      const py = wy - Math.cos(angle) * straightExt * (0.35 + 0.65 * curl); // -Y is UP in MediaPipe
+      const pz = wz + bendFactor + (handRotation[1] * segRatio * 0.06);
+
+      points.push({ x: px, y: py, z: pz });
+    }
+  });
+
+  return points;
+}
+
+// Resting natural hand posture (relaxed fingers)
+function createRestHand(wrist: Landmark3D, isLeft: boolean): Landmark3D[] {
+  return buildNaturalHandPose(
+    [wrist.x, wrist.y, wrist.z],
+    [0.3, 0.2, 0.2, 0.2, 0.2], // Relaxed soft curl
+    [0, 0, 0],
+    isLeft
+  );
+}
+
+/**
  * Generate 3D ISL Sign Landmark Sequence for a verified vocabulary word
  */
 export function generateISLGestureFrames(
   word: string,
-  totalFrames = 36
+  totalFrames = 72
 ): FrameLandmarks[] {
   const clean = word.toLowerCase().trim().replace(/[^a-z]/g, '');
 
@@ -119,12 +162,48 @@ export function generateISLGestureFrames(
     case 'no':
       return generateNoFrames(totalFrames);
 
+    case 'car':
+    case 'drive':
+      return generateCarFrames(totalFrames);
+
+    case 'house':
+      return generateHouseFrames(totalFrames);
+
+    case 'help':
+      return generateHelpFrames(totalFrames);
+
+    case 'book':
+      return generateBookFrames(totalFrames);
+
+    case 'water':
+      return generateWaterFrames(totalFrames);
+
+    case 'food':
+    case 'eat':
+      return generateFoodFrames(totalFrames);
+
+    case 'medicine':
+      return generateMedicineFrames(totalFrames);
+
+    case 'pain':
+      return generatePainFrames(totalFrames);
+
+    case 'fever':
+      return generateFeverFrames(totalFrames);
+
+    case 'emergency':
+      return generateEmergencyFrames(totalFrames);
+
+    case 'time':
+      return generateTimeFrames(totalFrames);
+
+    case 'family':
+      return generateFamilyFrames(totalFrames);
+
     default: {
-      // If single character or empty: fingerspell that letter
       if (clean.length <= 1) {
         return generateFingerspellFrames(clean.charAt(0) || 'A', totalFrames);
       }
-      // If multi-character unknown word/name: sequence all letters with smooth transitions!
       const letters = clean.toUpperCase().split('');
       const perLetterFrames = Math.max(18, Math.floor(totalFrames / letters.length));
       const allFrames: FrameLandmarks[] = [];
@@ -143,678 +222,374 @@ export function generateISLGestureFrames(
   }
 }
 
-// ─── 1. HELLO / HI: Temple Salute & Dynamic Friendly Waving ─────────────────
+// ─── 1. HELLO / HI ──────────────────────────────────────────────────────────
 function generateHelloFrames(totalFrames: number): FrameLandmarks[] {
   const frames: FrameLandmarks[] = [];
-
   for (let f = 0; f < totalFrames; f++) {
     const t = f / Math.max(1, totalFrames - 1);
     const pose = createBasePose();
+    const env = Math.sin(t * Math.PI);
+    // Smooth, friendly wave at temple
+    const wave = Math.sin(t * Math.PI * 4) * 0.04 * (t > 0.15 && t < 0.85 ? 1 : 0);
 
-    // 3 Phases:
-    // 0.00 - 0.25: Smooth elevation of right arm to right temple
-    // 0.25 - 0.80: Active 3-cycle temple waving & salute flourish
-    // 0.80 - 1.00: Settle back smoothly toward neutral rest
-    let poseT = 0;
-    let waveT = 0;
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.38 + wave, env), lerp(0.60, 0.28, env), -0.06],
+      [1.0, 1.0, 1.0, 1.0, 1.0], // Open flat hand
+      [0.0, 0.0, wave * 0.6],
+      false
+    );
 
-    if (t < 0.25) {
-      poseT = Math.sin((t / 0.25) * (Math.PI / 2));
-      waveT = 0;
-    } else if (t < 0.80) {
-      poseT = 1.0;
-      waveT = (t - 0.25) / 0.55;
-    } else {
-      poseT = Math.cos(((t - 0.80) / 0.20) * (Math.PI / 2));
-      waveT = 1.0;
-    }
+    const leftHand = createRestHand(pose[15], true);
+    pose[16] = rightHand[0];
+    pose[0].x = 0.50 + 0.01 * env;
+    const face = createFaceMesh(pose[0], 0.15 * env, 0.9 * env);
 
-    // Dynamic wave oscillation (side to side wrist motion)
-    const wave = Math.sin(waveT * Math.PI * 6.0) * (t >= 0.25 && t <= 0.80 ? 1 : 0);
-
-    // Right Wrist: from rest (0.41, 0.60) to right temple (0.38 + wave * 0.03, 0.22)
-    const startWristR = { x: 0.41, y: 0.60, z: -0.02 };
-    const targetWristR = { x: 0.38 + wave * 0.032, y: 0.21 + Math.abs(wave) * 0.006, z: -0.06 };
-    const wristR: Landmark3D = {
-      x: lerp(startWristR.x, targetWristR.x, poseT),
-      y: lerp(startWristR.y, targetWristR.y, poseT),
-      z: lerp(startWristR.z, targetWristR.z, poseT),
-    };
-    pose[16] = wristR;
-
-    // Right Elbow: acute bend placing hand at right temple
-    const startElbowR = { x: 0.34, y: 0.48, z: 0.02 };
-    const targetElbowR = { x: 0.28, y: 0.38, z: 0.03 };
-    pose[14] = {
-      x: lerp(startElbowR.x, targetElbowR.x, poseT),
-      y: lerp(startElbowR.y, targetElbowR.y, poseT),
-      z: lerp(startElbowR.z, targetElbowR.z, poseT),
-    };
-
-    // Right Hand Shape: Open flat salute palm with slight wave flex
-    const rightHandSpec: HandPoseSpec = {
-      groundAngle: 75 + wave * 15,
-      thumb: 0.8,
-      index: 1.0,
-      middle: 1.0,
-      ring: 1.0,
-      pinky: 1.0,
-      thumbMode: 'flat_hand',
-    };
-    const rightHand = buildHandLandmarks(rightHandSpec, wristR, false);
-
-    // Left Arm remains gracefully at rest
-    const wristL = pose[15];
-    const leftHand = createRestHand(wristL, true);
-
-    // Friendly smile & slight head tilt toward listener
-    pose[0].x = 0.50 + 0.012 * poseT;
-    pose[0].y = 0.20 + 0.008 * poseT;
-    const face = createFaceMesh(pose[0], 0.25 * poseT, 0.85 * poseT);
-
-    frames.push({
-      poseLandmarks: pose,
-      leftHandLandmarks: leftHand,
-      rightHandLandmarks: rightHand,
-      faceLandmarks: face,
-    });
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
   }
-
   return frames;
 }
 
-// ─── 2. THANK YOU: Chin Touch & Forward Offering Gesture ─────────────────────
+// ─── 2. THANK YOU ───────────────────────────────────────────────────────────
 function generateThankYouFrames(totalFrames: number): FrameLandmarks[] {
   const frames: FrameLandmarks[] = [];
-
   for (let f = 0; f < totalFrames; f++) {
     const t = f / Math.max(1, totalFrames - 1);
     const pose = createBasePose();
+    const touchT = t < 0.4 ? Math.sin((t / 0.4) * (Math.PI / 2)) : t < 0.85 ? 1.0 : Math.cos(((t - 0.85) / 0.15) * (Math.PI / 2));
+    const forwardT = t < 0.4 ? 0 : t < 0.85 ? Math.sin(((t - 0.4) / 0.45) * (Math.PI / 2)) : touchT;
 
-    // Phase 1 (0.00 - 0.40): Hand moves to touch chin / lower lip
-    // Phase 2 (0.40 - 0.85): Hand sweeps gracefully forward offering thanks
-    // Phase 3 (0.85 - 1.00): Returns to neutral
-    let touchT = 0;
-    let forwardT = 0;
+    const wx = lerp(0.41, lerp(0.48, 0.46, forwardT), touchT);
+    const wy = lerp(0.60, lerp(0.32, 0.38, forwardT), touchT);
+    const wz = lerp(-0.02, lerp(-0.04, -0.14, forwardT), touchT);
 
-    if (t < 0.40) {
-      touchT = Math.sin((t / 0.40) * (Math.PI / 2));
-    } else if (t < 0.85) {
-      touchT = 1.0;
-      forwardT = Math.sin(((t - 0.40) / 0.45) * (Math.PI / 2));
-    } else {
-      touchT = Math.cos(((t - 0.85) / 0.15) * (Math.PI / 2));
-      forwardT = touchT;
-    }
+    const rightHand = buildNaturalHandPose(
+      [wx, wy, wz],
+      [0.9, 1.0, 1.0, 1.0, 1.0], // Flat hand touching chin, then opening forward
+      [forwardT * 0.4, 0, -forwardT * 0.2],
+      false
+    );
 
-    const restWrist = { x: 0.41, y: 0.60, z: -0.02 };
-    const chinWrist = { x: 0.48, y: 0.28, z: -0.05 };
-    const offeredWrist = { x: 0.46, y: 0.38, z: -0.16 };
-
-    const intermediateWrist: Landmark3D = {
-      x: lerp(restWrist.x, chinWrist.x, touchT),
-      y: lerp(restWrist.y, chinWrist.y, touchT),
-      z: lerp(restWrist.z, chinWrist.z, touchT),
-    };
-
-    const wristR: Landmark3D = {
-      x: lerp(intermediateWrist.x, offeredWrist.x, forwardT),
-      y: lerp(intermediateWrist.y, offeredWrist.y, forwardT),
-      z: lerp(intermediateWrist.z, offeredWrist.z, forwardT),
-    };
-    pose[16] = wristR;
-
-    // Right Elbow
-    pose[14] = {
-      x: lerp(0.34, 0.38, touchT),
-      y: lerp(0.48, 0.42, touchT),
-      z: lerp(0.02, 0.00, touchT),
-    };
-
-    // Right Hand flat open palm facing back towards chin, then flat forward
-    const handAngle = lerp(85, 30, forwardT);
-    const rightHandSpec: HandPoseSpec = {
-      groundAngle: handAngle,
-      thumb: 0.85,
-      index: 1.0,
-      middle: 1.0,
-      ring: 1.0,
-      pinky: 1.0,
-      thumbMode: 'flat_hand',
-    };
-    const rightHand = buildHandLandmarks(rightHandSpec, wristR, false);
     const leftHand = createRestHand(pose[15], true);
-
-    // Respectful forward nod of head
+    pose[16] = rightHand[0];
     pose[0].y = 0.20 + 0.015 * forwardT;
     const face = createFaceMesh(pose[0], 0.15 * forwardT, 0.90 * forwardT);
 
-    frames.push({
-      poseLandmarks: pose,
-      leftHandLandmarks: leftHand,
-      rightHandLandmarks: rightHand,
-      faceLandmarks: face,
-    });
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
   }
-
   return frames;
 }
 
-// ─── 3. GOOD MORNING: Chin Touch followed by Morning Sun Rise ────────────────
+// ─── 3. GOOD MORNING ────────────────────────────────────────────────────────
 function generateGoodMorningFrames(totalFrames: number): FrameLandmarks[] {
   const frames: FrameLandmarks[] = [];
-
   for (let f = 0; f < totalFrames; f++) {
     const t = f / Math.max(1, totalFrames - 1);
     const pose = createBasePose();
+    const env = Math.sin(t * Math.PI);
+    const sunRise = Math.sin(t * Math.PI) * 0.16;
 
-    let chinT = 0;
-    let sunRiseT = 0;
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.44, env), lerp(0.60, 0.45 - sunRise, env), -0.06],
+      [1.0, 1.0, 1.0, 1.0, 1.0], // Open spread sun
+      [0, 0, 0.2],
+      false
+    );
 
-    if (t < 0.42) {
-      chinT = Math.sin((t / 0.42) * (Math.PI / 2));
-    } else if (t < 0.85) {
-      chinT = 1.0;
-      sunRiseT = Math.sin(((t - 0.42) / 0.43) * (Math.PI / 2));
-    } else {
-      chinT = Math.cos(((t - 0.85) / 0.15) * (Math.PI / 2));
-      sunRiseT = chinT;
-    }
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.54, env), lerp(0.60, 0.48, env), -0.04],
+      [0.8, 1.0, 1.0, 1.0, 1.0], // Horizontal base
+      [0, 0, 1.5],
+      true
+    );
 
-    const restWrist = { x: 0.41, y: 0.60, z: -0.02 };
-    const chinWrist = { x: 0.48, y: 0.28, z: -0.05 };
-    const sunWrist = { x: 0.36, y: 0.16, z: -0.08 };
-
-    const intermediate: Landmark3D = {
-      x: lerp(restWrist.x, chinWrist.x, chinT),
-      y: lerp(restWrist.y, chinWrist.y, chinT),
-      z: lerp(restWrist.z, chinWrist.z, chinT),
-    };
-
-    const wristR: Landmark3D = {
-      x: lerp(intermediate.x, sunWrist.x, sunRiseT),
-      y: lerp(intermediate.y, sunWrist.y, sunRiseT),
-      z: lerp(intermediate.z, sunWrist.z, sunRiseT),
-    };
-    pose[16] = wristR;
-
-    pose[14] = {
-      x: lerp(0.34, 0.29, sunRiseT),
-      y: lerp(0.48, 0.35, sunRiseT),
-      z: 0.01,
-    };
-
-    const rightHandSpec: HandPoseSpec = {
-      groundAngle: lerp(75, 88, sunRiseT),
-      thumb: 1.0,
-      index: 1.0,
-      middle: 1.0,
-      ring: 1.0,
-      pinky: 1.0,
-      thumbMode: 'spread',
-    };
-    const rightHand = buildHandLandmarks(rightHandSpec, wristR, false);
-    const leftHand = createRestHand(pose[15], true);
-    const face = createFaceMesh(pose[0], 0.2 * sunRiseT, 0.85 * sunRiseT);
-
-    frames.push({
-      poseLandmarks: pose,
-      leftHandLandmarks: leftHand,
-      rightHandLandmarks: rightHand,
-      faceLandmarks: face,
-    });
+    pose[16] = rightHand[0];
+    pose[15] = leftHand[0];
+    const face = createFaceMesh(pose[0], 0.1, 0.8 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
   }
-
   return frames;
 }
 
-// ─── 4. GOOD AFTERNOON: Horizontal Mid-Chest Sun Arc Sweep ─────────────────
+// ─── 4. GOOD AFTERNOON ──────────────────────────────────────────────────────
 function generateGoodAfternoonFrames(totalFrames: number): FrameLandmarks[] {
   const frames: FrameLandmarks[] = [];
-
   for (let f = 0; f < totalFrames; f++) {
     const t = f / Math.max(1, totalFrames - 1);
     const pose = createBasePose();
     const env = Math.sin(t * Math.PI);
 
-    const sweepX = lerp(0.40, 0.58, t);
-    const wristR: Landmark3D = {
-      x: lerp(0.41, sweepX, env),
-      y: lerp(0.60, 0.36, env),
-      z: lerp(-0.02, -0.10, env),
-    };
-    pose[16] = wristR;
-    pose[14] = { x: 0.36, y: 0.44, z: 0.01 };
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.48, env), lerp(0.60, 0.24, env), -0.06],
+      [0.9, 1.0, 1.0, 1.0, 1.0],
+      [0, 0, 0],
+      false
+    );
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.52, env), lerp(0.60, 0.44, env), -0.04],
+      [0.8, 1.0, 1.0, 1.0, 1.0],
+      [0, 0, 1.5],
+      true
+    );
 
-    const rightHandSpec: HandPoseSpec = {
-      groundAngle: 25,
-      thumb: 0.8,
-      index: 1.0,
-      middle: 1.0,
-      ring: 1.0,
-      pinky: 1.0,
-      thumbMode: 'flat_hand',
-    };
-    const rightHand = buildHandLandmarks(rightHandSpec, wristR, false);
-    const leftHand = createRestHand(pose[15], true);
-    const face = createFaceMesh(pose[0], 0.1 * env, 0.7 * env);
-
-    frames.push({
-      poseLandmarks: pose,
-      leftHandLandmarks: leftHand,
-      rightHandLandmarks: rightHand,
-      faceLandmarks: face,
-    });
+    pose[16] = rightHand[0];
+    pose[15] = leftHand[0];
+    const face = createFaceMesh(pose[0], 0.05, 0.7 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
   }
-
   return frames;
 }
 
-// ─── 5. GOOD EVENING: Gentle Downward Sweeping Evening Wave ──────────────────
+// ─── 5. GOOD EVENING ────────────────────────────────────────────────────────
 function generateGoodEveningFrames(totalFrames: number): FrameLandmarks[] {
   const frames: FrameLandmarks[] = [];
-
   for (let f = 0; f < totalFrames; f++) {
     const t = f / Math.max(1, totalFrames - 1);
     const pose = createBasePose();
     const env = Math.sin(t * Math.PI);
+    const sunSet = Math.sin(t * Math.PI) * 0.12;
 
-    const wristR: Landmark3D = {
-      x: lerp(0.41, 0.46, env),
-      y: lerp(0.60, 0.38 + t * 0.08, env),
-      z: lerp(-0.02, -0.08, env),
-    };
-    pose[16] = wristR;
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.46, env), lerp(0.60, 0.36 + sunSet, env), -0.06],
+      [0.8, 1.0, 1.0, 1.0, 1.0],
+      [0, 0, -1.2],
+      false
+    );
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.54, env), lerp(0.60, 0.46, env), -0.04],
+      [0.8, 1.0, 1.0, 1.0, 1.0],
+      [0, 0, 1.5],
+      true
+    );
 
-    const rightHandSpec: HandPoseSpec = {
-      groundAngle: -20,
-      thumb: 0.7,
-      index: 1.0,
-      middle: 1.0,
-      ring: 1.0,
-      pinky: 1.0,
-      thumbMode: 'flat_hand',
-    };
-    const rightHand = buildHandLandmarks(rightHandSpec, wristR, false);
-    const leftHand = createRestHand(pose[15], true);
-    const face = createFaceMesh(pose[0], 0.1 * env, 0.6 * env);
-
-    frames.push({
-      poseLandmarks: pose,
-      leftHandLandmarks: leftHand,
-      rightHandLandmarks: rightHand,
-      faceLandmarks: face,
-    });
+    pose[16] = rightHand[0];
+    pose[15] = leftHand[0];
+    const face = createFaceMesh(pose[0], 0.05, 0.6 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
   }
-
   return frames;
 }
 
-// ─── 6. GOOD NIGHT: Both Hands Meet at Left Cheek in Sleep Posture ──────────
+// ─── 6. GOOD NIGHT ──────────────────────────────────────────────────────────
 function generateGoodNightFrames(totalFrames: number): FrameLandmarks[] {
   const frames: FrameLandmarks[] = [];
-
   for (let f = 0; f < totalFrames; f++) {
     const t = f / Math.max(1, totalFrames - 1);
     const pose = createBasePose();
     const env = Math.sin(t * Math.PI);
 
-    // Both hands glide up to meet at left cheek
-    const cheekPoint: Landmark3D = { x: 0.58, y: 0.24, z: -0.04 };
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.42, env), lerp(0.60, 0.30, env), -0.06],
+      [0.8, 1.0, 1.0, 1.0, 1.0],
+      [0, 0, -0.6],
+      false
+    );
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.44, env), lerp(0.60, 0.32, env), -0.05],
+      [0.8, 1.0, 1.0, 1.0, 1.0],
+      [0, 0, 0.6],
+      true
+    );
 
-    const wristR: Landmark3D = {
-      x: lerp(0.41, cheekPoint.x - 0.02, env),
-      y: lerp(0.60, cheekPoint.y, env),
-      z: lerp(-0.02, cheekPoint.z, env),
-    };
-    pose[16] = wristR;
-
-    const wristL: Landmark3D = {
-      x: lerp(0.59, cheekPoint.x + 0.02, env),
-      y: lerp(0.60, cheekPoint.y + 0.01, env),
-      z: lerp(-0.02, cheekPoint.z - 0.01, env),
-    };
-    pose[15] = wristL;
-
-    // Both hands flat against each other
-    const handSpec: HandPoseSpec = {
-      groundAngle: 65,
-      thumb: 0.7,
-      index: 1.0,
-      middle: 1.0,
-      ring: 1.0,
-      pinky: 1.0,
-      thumbMode: 'flat_hand',
-    };
-
-    const rightHand = buildHandLandmarks(handSpec, wristR, false);
-    const leftHand = buildHandLandmarks(handSpec, wristL, true);
-
-    // Head tilts gently onto hands
-    pose[0].x = 0.50 + 0.025 * env;
-    pose[0].y = 0.20 + 0.015 * env;
-    const face = createFaceMesh(pose[0], 0.0, 0.8 * env);
-
-    frames.push({
-      poseLandmarks: pose,
-      leftHandLandmarks: leftHand,
-      rightHandLandmarks: rightHand,
-      faceLandmarks: face,
-    });
+    pose[16] = rightHand[0];
+    pose[15] = leftHand[0];
+    pose[0].x = 0.50 - 0.02 * env;
+    const face = createFaceMesh(pose[0], 0.0, 0.5 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
   }
-
   return frames;
 }
 
-// ─── 7. HOW ARE YOU: Open Palms Forward Inquiring Chest Arc ─────────────────
+// ─── 7. HOW ARE YOU ─────────────────────────────────────────────────────────
 function generateHowAreYouFrames(totalFrames: number): FrameLandmarks[] {
   const frames: FrameLandmarks[] = [];
-
   for (let f = 0; f < totalFrames; f++) {
     const t = f / Math.max(1, totalFrames - 1);
     const pose = createBasePose();
     const env = Math.sin(t * Math.PI);
 
-    // Both hands lift to chest and extend forward open palms
-    const wristR: Landmark3D = {
-      x: lerp(0.41, 0.40, env),
-      y: lerp(0.60, 0.42, env),
-      z: lerp(-0.02, -0.14, env),
-    };
-    pose[16] = wristR;
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.38, env), lerp(0.60, 0.42, env), -0.10],
+      [0.9, 1.0, 1.0, 1.0, 1.0],
+      [0.3, 0, -0.2],
+      false
+    );
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.62, env), lerp(0.60, 0.42, env), -0.10],
+      [0.9, 1.0, 1.0, 1.0, 1.0],
+      [0.3, 0, 0.2],
+      true
+    );
 
-    const wristL: Landmark3D = {
-      x: lerp(0.59, 0.60, env),
-      y: lerp(0.60, 0.42, env),
-      z: lerp(-0.02, -0.14, env),
-    };
-    pose[15] = wristL;
-
-    const openSpec: HandPoseSpec = {
-      groundAngle: 45,
-      thumb: 1.0,
-      index: 1.0,
-      middle: 1.0,
-      ring: 1.0,
-      pinky: 1.0,
-      thumbMode: 'spread',
-    };
-
-    const rightHand = buildHandLandmarks(openSpec, wristR, false);
-    const leftHand = buildHandLandmarks(openSpec, wristL, true);
-
-    // Inquiring head tilt forward
-    pose[0].y = 0.20 + 0.012 * env;
-    const face = createFaceMesh(pose[0], 0.2 * env, 0.7 * env);
-
-    frames.push({
-      poseLandmarks: pose,
-      leftHandLandmarks: leftHand,
-      rightHandLandmarks: rightHand,
-      faceLandmarks: face,
-    });
+    pose[16] = rightHand[0];
+    pose[15] = leftHand[0];
+    const face = createFaceMesh(pose[0], 0.1 * env, 0.7 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
   }
-
   return frames;
 }
 
-// ─── 8. ALRIGHT / OK: Symmetrical Double Thumbs-Up at Chest ────────────────
+// ─── 8. ALRIGHT / OK ────────────────────────────────────────────────────────
 function generateAlrightFrames(totalFrames: number): FrameLandmarks[] {
   const frames: FrameLandmarks[] = [];
-
   for (let f = 0; f < totalFrames; f++) {
     const t = f / Math.max(1, totalFrames - 1);
     const pose = createBasePose();
     const env = Math.sin(t * Math.PI);
+    const nod = Math.sin(t * Math.PI * 4) * 0.015 * env;
 
-    // Both fists lift to mid chest with double affirmative nod
-    const nod = Math.sin(t * Math.PI * 4) * 0.010 * env;
-
-    const wristR: Landmark3D = {
-      x: lerp(0.41, 0.42, env),
-      y: lerp(0.60, 0.44 + nod, env),
-      z: lerp(-0.02, -0.08, env),
-    };
-    pose[16] = wristR;
-
-    const wristL: Landmark3D = {
-      x: lerp(0.59, 0.58, env),
-      y: lerp(0.60, 0.44 + nod, env),
-      z: lerp(-0.02, -0.08, env),
-    };
-    pose[15] = wristL;
-
-    // Crisp Thumbs Up Specs (thumb extended straight UP, 4 fingers curled tightly into fist)
-    const thumbsUpSpec: HandPoseSpec = {
-      groundAngle: 90,
-      thumb: 1.0,
-      index: 0.0,
-      middle: 0.0,
-      ring: 0.0,
-      pinky: 0.0,
-      thumbMode: 'horizontal_bar',
-    };
-
-    const rightHand = buildHandLandmarks(thumbsUpSpec, wristR, false);
-    const leftHand = buildHandLandmarks(thumbsUpSpec, wristL, true);
-
-    // Affirmative double nod of head
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.40, env), lerp(0.60, 0.34, env), -0.06],
+      [0.3, 0.3, 1.0, 1.0, 1.0], // OK circle loop
+      [0, 0, 0],
+      false
+    );
+    const leftHand = createRestHand(pose[15], true);
+    pose[16] = rightHand[0];
     pose[0].y = 0.20 + nod;
     const face = createFaceMesh(pose[0], 0.1 * env, 0.95 * env);
-
-    frames.push({
-      poseLandmarks: pose,
-      leftHandLandmarks: leftHand,
-      rightHandLandmarks: rightHand,
-      faceLandmarks: face,
-    });
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
   }
-
   return frames;
 }
 
-// ─── 9. PLEASED / NAMASTE: Palms Meet at Heart Center ──────────────────────
+// ─── 9. NAMASTE / PLEASED ───────────────────────────────────────────────────
 function generatePleasedFrames(totalFrames: number): FrameLandmarks[] {
   const frames: FrameLandmarks[] = [];
-
   for (let f = 0; f < totalFrames; f++) {
     const t = f / Math.max(1, totalFrames - 1);
     const pose = createBasePose();
     const env = Math.sin(t * Math.PI);
 
-    // Both palms meet at center of chest (Namaste)
-    const wristR: Landmark3D = {
-      x: lerp(0.41, 0.485, env),
-      y: lerp(0.60, 0.40, env),
-      z: lerp(-0.02, -0.06, env),
-    };
-    pose[16] = wristR;
+    // Both hands meeting vertically at chest in pranam
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.485, env), lerp(0.60, 0.40, env), -0.05],
+      [0.9, 1.0, 1.0, 1.0, 0.9],
+      [0, -0.2, -0.1],
+      false
+    );
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.515, env), lerp(0.60, 0.40, env), -0.05],
+      [0.9, 1.0, 1.0, 1.0, 0.9],
+      [0, 0.2, 0.1],
+      true
+    );
 
-    const wristL: Landmark3D = {
-      x: lerp(0.59, 0.515, env),
-      y: lerp(0.60, 0.40, env),
-      z: lerp(-0.02, -0.06, env),
-    };
-    pose[15] = wristL;
-
-    const namasteSpec: HandPoseSpec = {
-      groundAngle: 88,
-      thumb: 0.8,
-      index: 1.0,
-      middle: 1.0,
-      ring: 1.0,
-      pinky: 1.0,
-      thumbMode: 'flat_hand',
-    };
-
-    const rightHand = buildHandLandmarks(namasteSpec, wristR, false);
-    const leftHand = buildHandLandmarks(namasteSpec, wristL, true);
-
-    // Respectful slight head bow
+    pose[16] = rightHand[0];
+    pose[15] = leftHand[0];
     pose[0].y = 0.20 + 0.015 * env;
     const face = createFaceMesh(pose[0], 0.05, 0.9 * env);
-
-    frames.push({
-      poseLandmarks: pose,
-      leftHandLandmarks: leftHand,
-      rightHandLandmarks: rightHand,
-      faceLandmarks: face,
-    });
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
   }
-
   return frames;
 }
 
-// ─── 10. DOCTOR: Tap Left Wrist Pulse ───────────────────────────────────────
+// ─── 10. DOCTOR: Left Wrist Held Steady, Right Fingers Tap Radial Pulse ─────
 function generateDoctorFrames(totalFrames: number): FrameLandmarks[] {
   const frames: FrameLandmarks[] = [];
-
   for (let f = 0; f < totalFrames; f++) {
     const t = f / Math.max(1, totalFrames - 1);
     const pose = createBasePose();
     const env = Math.sin(t * Math.PI);
+    // Distinct, rhythmic 2-pulse tap on inner wrist
+    const tap = Math.pow(Math.sin(t * Math.PI * 4), 4) * 0.035 * (t > 0.2 && t < 0.8 ? 1 : 0);
 
-    // Left hand positioned palm up at chest
-    const wristL: Landmark3D = {
-      x: lerp(0.59, 0.54, env),
-      y: lerp(0.60, 0.42, env),
-      z: -0.05,
-    };
-    pose[15] = wristL;
+    // Left arm resting stably in front of chest, palm facing up
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.54, env), lerp(0.60, 0.42, env), -0.05],
+      [0.8, 0.9, 0.9, 0.9, 0.8], // Open palm resting upward
+      [0.4, 0.2, 1.3],
+      true
+    );
 
-    // Right fingers tap left wrist twice
-    const tap = Math.sin(t * Math.PI * 4) * 0.018 * (t > 0.25 && t < 0.80 ? 1 : 0);
-    const wristR: Landmark3D = {
-      x: lerp(0.41, 0.53, env),
-      y: lerp(0.60, 0.39 + tap, env),
-      z: -0.05,
-    };
-    pose[16] = wristR;
+    // Right fingers coming down directly on top of left inner wrist
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.52, env), lerp(0.60, 0.36 + tap, env), -0.06],
+      [0.1, 1.0, 1.0, 0.1, 0.1], // Index & Middle extended together to feel pulse
+      [0.2, 0.1, -0.8],
+      false
+    );
 
-    const leftHand = buildHandLandmarks({
-      groundAngle: 0,
-      thumb: 0.7,
-      index: 1.0,
-      middle: 1.0,
-      ring: 1.0,
-      pinky: 1.0,
-      thumbMode: 'flat_hand',
-    }, wristL, true);
-
-    // Right hand index & middle extended tapping pulse
-    const rightHand = buildHandLandmarks({
-      groundAngle: -70,
-      thumb: 0.0,
-      index: 1.0,
-      middle: 1.0,
-      ring: 0.0,
-      pinky: 0.0,
-      thumbMode: 'fist',
-    }, wristR, false);
-
-    const face = createFaceMesh(pose[0], 0.0, 0.6 * env);
-
-    frames.push({
-      poseLandmarks: pose,
-      leftHandLandmarks: leftHand,
-      rightHandLandmarks: rightHand,
-      faceLandmarks: face,
-    });
+    pose[15] = leftHand[0];
+    pose[16] = rightHand[0];
+    const face = createFaceMesh(pose[0], 0.05, 0.6 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
   }
-
   return frames;
 }
 
-// ─── 11. HOSPITAL: Trace Cross on Shoulder ──────────────────────────────────
+// ─── 11. HOSPITAL: Left Arm Folded, Right Fingers Draw Red Cross (+) ────────
 function generateHospitalFrames(totalFrames: number): FrameLandmarks[] {
   const frames: FrameLandmarks[] = [];
-
   for (let f = 0; f < totalFrames; f++) {
     const t = f / Math.max(1, totalFrames - 1);
     const pose = createBasePose();
     const env = Math.sin(t * Math.PI);
 
-    // Cross stroke coordinates near left shoulder
-    const crossX = t < 0.5 ? 0.60 : lerp(0.56, 0.64, (t - 0.5) * 2);
-    const crossY = t < 0.5 ? lerp(0.28, 0.36, t * 2) : 0.32;
+    // Left arm folded horizontally across chest
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.48, env), lerp(0.60, 0.42, env), -0.04],
+      [0.8, 0.9, 0.9, 0.9, 0.8],
+      [0, 0, 1.4],
+      true
+    );
 
-    const wristR: Landmark3D = {
-      x: lerp(0.41, crossX, env),
-      y: lerp(0.60, crossY, env),
-      z: -0.04,
-    };
-    pose[16] = wristR;
+    // Right hand draws a distinct Red Cross (+) on left upper arm:
+    // Phase 1 (0.20 - 0.50): Vertical stroke down
+    // Phase 2 (0.55 - 0.85): Horizontal stroke across
+    let crossX = 0.56;
+    let crossY = 0.30;
+    if (t < 0.52) {
+      const vProg = Math.max(0, Math.min(1, (t - 0.20) / 0.30));
+      crossY = lerp(0.24, 0.36, vProg);
+    } else {
+      const hProg = Math.max(0, Math.min(1, (t - 0.55) / 0.30));
+      crossX = lerp(0.50, 0.62, hProg);
+      crossY = 0.30;
+    }
 
-    const rightHand = buildHandLandmarks({
-      groundAngle: 45,
-      thumb: 0.0,
-      index: 1.0,
-      middle: 0.0,
-      ring: 0.0,
-      pinky: 0.0,
-      thumbMode: 'fist',
-    }, wristR, false);
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, crossX, env), lerp(0.60, crossY, env), -0.07],
+      [0.1, 1.0, 1.0, 0.1, 0.1], // Index & middle extended
+      [0.2, 0, -0.4],
+      false
+    );
 
-    const leftHand = createRestHand(pose[15], true);
-    const face = createFaceMesh(pose[0], 0.0, 0.6 * env);
-
-    frames.push({
-      poseLandmarks: pose,
-      leftHandLandmarks: leftHand,
-      rightHandLandmarks: rightHand,
-      faceLandmarks: face,
-    });
+    pose[15] = leftHand[0];
+    pose[16] = rightHand[0];
+    const face = createFaceMesh(pose[0], 0.05, 0.5 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
   }
-
   return frames;
 }
 
-// ─── 12. YES: Fist Nodding Up and Down ───────────────────────────────────────
+// ─── 12. YES ────────────────────────────────────────────────────────────────
 function generateYesFrames(totalFrames: number): FrameLandmarks[] {
   const frames: FrameLandmarks[] = [];
-
   for (let f = 0; f < totalFrames; f++) {
     const t = f / Math.max(1, totalFrames - 1);
     const pose = createBasePose();
     const env = Math.sin(t * Math.PI);
-    const nod = Math.sin(t * Math.PI * 4) * 0.025 * env;
+    const nod = Math.sin(t * Math.PI * 4) * 0.03 * env;
 
-    const wristR: Landmark3D = {
-      x: lerp(0.41, 0.40, env),
-      y: lerp(0.60, 0.38 + nod, env),
-      z: -0.08,
-    };
-    pose[16] = wristR;
-
-    const rightHand = buildHandLandmarks({
-      groundAngle: 90,
-      thumb: 0.0,
-      index: 0.0,
-      middle: 0.0,
-      ring: 0.0,
-      pinky: 0.0,
-      thumbMode: 'fist',
-    }, wristR, false);
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.42, env), lerp(0.60, 0.38 + nod, env), -0.07],
+      [0.1, 0.1, 0.1, 0.1, 0.1], // Closed fist nodding
+      [nod * 5, 0, 0],
+      false
+    );
 
     const leftHand = createRestHand(pose[15], true);
+    pose[16] = rightHand[0];
     pose[0].y = 0.20 + nod * 0.8;
     const face = createFaceMesh(pose[0], 0.1 * env, 0.8 * env);
-
-    frames.push({
-      poseLandmarks: pose,
-      leftHandLandmarks: leftHand,
-      rightHandLandmarks: rightHand,
-      faceLandmarks: face,
-    });
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
   }
-
   return frames;
 }
 
-// ─── 13. NO: Index & Middle Snapping onto Thumb ─────────────────────────────
+// ─── 13. NO ─────────────────────────────────────────────────────────────────
 function generateNoFrames(totalFrames: number): FrameLandmarks[] {
   const frames: FrameLandmarks[] = [];
-
   for (let f = 0; f < totalFrames; f++) {
     const t = f / Math.max(1, totalFrames - 1);
     const pose = createBasePose();
@@ -822,34 +597,375 @@ function generateNoFrames(totalFrames: number): FrameLandmarks[] {
     const snap = Math.sin(t * Math.PI * 4);
     const curl = snap > 0 ? 0.9 : 0.1;
 
-    const wristR: Landmark3D = {
-      x: lerp(0.41, 0.42, env),
-      y: lerp(0.60, 0.40, env),
-      z: -0.08,
-    };
-    pose[16] = wristR;
-
-    const rightHand = buildHandLandmarks({
-      groundAngle: 60,
-      thumb: 0.7,
-      index: 1.0 - curl * 0.6,
-      middle: 1.0 - curl * 0.6,
-      ring: 0.0,
-      pinky: 0.0,
-      thumbMode: 'fist',
-    }, wristR, false);
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.42, env), lerp(0.60, 0.38, env), -0.07],
+      [0.7, 1.0 - curl * 0.7, 1.0 - curl * 0.7, 0.1, 0.1],
+      [0, 0, 0],
+      false
+    );
 
     const leftHand = createRestHand(pose[15], true);
-    pose[0].x = 0.50 + Math.sin(t * Math.PI * 4) * 0.008 * env; // head shake
+    pose[16] = rightHand[0];
+    pose[0].x = 0.50 + Math.sin(t * Math.PI * 4) * 0.008 * env;
     const face = createFaceMesh(pose[0], 0.0, 0.3);
-
-    frames.push({
-      poseLandmarks: pose,
-      leftHandLandmarks: leftHand,
-      rightHandLandmarks: rightHand,
-      faceLandmarks: face,
-    });
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
   }
+  return frames;
+}
 
+// ─── 14. CAR / DRIVE ────────────────────────────────────────────────────────
+function generateCarFrames(totalFrames: number): FrameLandmarks[] {
+  const frames: FrameLandmarks[] = [];
+  for (let f = 0; f < totalFrames; f++) {
+    const t = f / Math.max(1, totalFrames - 1);
+    const pose = createBasePose();
+    const env = Math.sin(t * Math.PI);
+    const steer = Math.sin(t * Math.PI * 4) * 0.045 * env;
+
+    // Both hands in fists holding steering wheel at 10 and 2 o'clock
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.42, env) - steer * 0.4, lerp(0.60, 0.40 + steer, env), -0.08],
+      [0.1, 0.1, 0.1, 0.1, 0.1], // Closed fist grip
+      [0, 0, steer * 0.8],
+      false
+    );
+
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.58, env) - steer * 0.4, lerp(0.60, 0.40 - steer, env), -0.08],
+      [0.1, 0.1, 0.1, 0.1, 0.1], // Closed fist grip
+      [0, 0, steer * 0.8],
+      true
+    );
+
+    pose[16] = rightHand[0];
+    pose[15] = leftHand[0];
+    const face = createFaceMesh(pose[0], 0.05, 0.5 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
+  }
+  return frames;
+}
+
+// ─── 15. HOUSE ──────────────────────────────────────────────────────────────
+function generateHouseFrames(totalFrames: number): FrameLandmarks[] {
+  const frames: FrameLandmarks[] = [];
+  for (let f = 0; f < totalFrames; f++) {
+    const t = f / Math.max(1, totalFrames - 1);
+    const pose = createBasePose();
+    const env = Math.sin(t * Math.PI);
+
+    // Both hands meeting symmetrically at 45° to form a triangular roof (/\)
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.46, env), lerp(0.60, 0.38, env), -0.06],
+      [0.9, 1.0, 1.0, 1.0, 0.9],
+      [0, 0, -0.65], // Angled inward
+      false
+    );
+
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.54, env), lerp(0.60, 0.38, env), -0.06],
+      [0.9, 1.0, 1.0, 1.0, 0.9],
+      [0, 0, 0.65], // Angled inward meeting at apex
+      true
+    );
+
+    pose[16] = rightHand[0];
+    pose[15] = leftHand[0];
+    const face = createFaceMesh(pose[0], 0.05, 0.5 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
+  }
+  return frames;
+}
+
+// ─── 16. HELP ───────────────────────────────────────────────────────────────
+function generateHelpFrames(totalFrames: number): FrameLandmarks[] {
+  const frames: FrameLandmarks[] = [];
+  for (let f = 0; f < totalFrames; f++) {
+    const t = f / Math.max(1, totalFrames - 1);
+    const pose = createBasePose();
+    const env = Math.sin(t * Math.PI);
+    const lift = Math.sin(t * Math.PI * 2) * 0.035 * env;
+
+    // Left hand open palm up support base
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.50, env), lerp(0.60, 0.46 - lift, env), -0.06],
+      [0.85, 0.95, 0.95, 0.95, 0.85],
+      [0.3, 0, 1.4],
+      true
+    );
+
+    // Right hand thumbs-up fist placed on top of left palm
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.50, env), lerp(0.60, 0.38 - lift, env), -0.06],
+      [0.95, 0.1, 0.1, 0.1, 0.1], // Thumbs-up fist
+      [0, 0, 0],
+      false
+    );
+
+    pose[15] = leftHand[0];
+    pose[16] = rightHand[0];
+    const face = createFaceMesh(pose[0], 0.05, 0.6 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
+  }
+  return frames;
+}
+
+// ─── 17. BOOK ───────────────────────────────────────────────────────────────
+function generateBookFrames(totalFrames: number): FrameLandmarks[] {
+  const frames: FrameLandmarks[] = [];
+  for (let f = 0; f < totalFrames; f++) {
+    const t = f / Math.max(1, totalFrames - 1);
+    const pose = createBasePose();
+    const env = Math.sin(t * Math.PI);
+    const sway = Math.sin(t * Math.PI) * 0.02;
+
+    // Both open hands touching at pinky edges like an open book
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.46 + sway, env), lerp(0.60, 0.40, env), -0.06],
+      [0.85, 0.95, 0.95, 0.95, 0.9],
+      [0.2, -0.2, 0.2],
+      false
+    );
+
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.54 - sway, env), lerp(0.60, 0.40, env), -0.06],
+      [0.85, 0.95, 0.95, 0.95, 0.9],
+      [0.2, 0.2, -0.2],
+      true
+    );
+
+    pose[16] = rightHand[0];
+    pose[15] = leftHand[0];
+    const face = createFaceMesh(pose[0], 0.05, 0.5 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
+  }
+  return frames;
+}
+
+// ─── 18. WATER ──────────────────────────────────────────────────────────────
+function generateWaterFrames(totalFrames: number): FrameLandmarks[] {
+  const frames: FrameLandmarks[] = [];
+  for (let f = 0; f < totalFrames; f++) {
+    const t = f / Math.max(1, totalFrames - 1);
+    const pose = createBasePose();
+    const env = Math.sin(t * Math.PI);
+    const tap = Math.sin(t * Math.PI * 4) * 0.025 * (t > 0.25 && t < 0.8 ? 1 : 0);
+
+    // Three fingers upright in W shape tapping gently against chin twice
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.48, env), lerp(0.60, 0.30 + tap, env), -0.07],
+      [0.1, 0.95, 0.95, 0.95, 0.1], // W-shape
+      [0, 0, 0],
+      false
+    );
+
+    const leftHand = createRestHand(pose[15], true);
+    pose[16] = rightHand[0];
+    const face = createFaceMesh(pose[0], 0.1 * env, 0.5 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
+  }
+  return frames;
+}
+
+// ─── 19. FOOD / EAT ─────────────────────────────────────────────────────────
+function generateFoodFrames(totalFrames: number): FrameLandmarks[] {
+  const frames: FrameLandmarks[] = [];
+  for (let f = 0; f < totalFrames; f++) {
+    const t = f / Math.max(1, totalFrames - 1);
+    const pose = createBasePose();
+    const env = Math.sin(t * Math.PI);
+    const feed = Math.sin(t * Math.PI * 4) * 0.035 * (t > 0.2 && t < 0.85 ? 1 : 0);
+
+    // Right fingertips grouped together brought to mouth twice
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.49, env), lerp(0.60, 0.32 - feed, env), -0.08],
+      [0.5, 0.5, 0.5, 0.5, 0.5], // Grouped fingertips
+      [0.2, 0, 0],
+      false
+    );
+
+    const leftHand = createRestHand(pose[15], true);
+    pose[16] = rightHand[0];
+    const face = createFaceMesh(pose[0], 0.2 * (feed > 0 ? 1 : 0), 0.5 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
+  }
+  return frames;
+}
+
+// ─── 20. MEDICINE ───────────────────────────────────────────────────────────
+function generateMedicineFrames(totalFrames: number): FrameLandmarks[] {
+  const frames: FrameLandmarks[] = [];
+  for (let f = 0; f < totalFrames; f++) {
+    const t = f / Math.max(1, totalFrames - 1);
+    const pose = createBasePose();
+    const env = Math.sin(t * Math.PI);
+    const circleX = Math.cos(t * Math.PI * 6) * 0.02 * env;
+    const circleY = Math.sin(t * Math.PI * 6) * 0.015 * env;
+
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.52, env), lerp(0.60, 0.42, env), -0.06],
+      [0.8, 1.0, 1.0, 1.0, 0.8],
+      [0.4, 0, 1.2],
+      true
+    );
+
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.50 + circleX, env), lerp(0.60, 0.38 + circleY, env), -0.07],
+      [0.2, 0.2, 1.0, 0.2, 0.2], // Middle finger crushing pill
+      [0, 0, -0.6],
+      false
+    );
+
+    pose[15] = leftHand[0];
+    pose[16] = rightHand[0];
+    const face = createFaceMesh(pose[0], 0.05, 0.5 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
+  }
+  return frames;
+}
+
+// ─── 21. PAIN ───────────────────────────────────────────────────────────────
+function generatePainFrames(totalFrames: number): FrameLandmarks[] {
+  const frames: FrameLandmarks[] = [];
+  for (let f = 0; f < totalFrames; f++) {
+    const t = f / Math.max(1, totalFrames - 1);
+    const pose = createBasePose();
+    const env = Math.sin(t * Math.PI);
+    const jab = Math.sin(t * Math.PI * 6) * 0.025 * env;
+
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.44 + jab, env), lerp(0.60, 0.38, env), -0.06],
+      [0.1, 1.0, 0.1, 0.1, 0.1], // Index pointing inward
+      [0, 0, -1.2],
+      false
+    );
+
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.56 - jab, env), lerp(0.60, 0.38, env), -0.06],
+      [0.1, 1.0, 0.1, 0.1, 0.1], // Index pointing inward
+      [0, 0, 1.2],
+      true
+    );
+
+    pose[16] = rightHand[0];
+    pose[15] = leftHand[0];
+    const face = createFaceMesh(pose[0], 0.15, 0.1);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
+  }
+  return frames;
+}
+
+// ─── 22. FEVER ──────────────────────────────────────────────────────────────
+function generateFeverFrames(totalFrames: number): FrameLandmarks[] {
+  const frames: FrameLandmarks[] = [];
+  for (let f = 0; f < totalFrames; f++) {
+    const t = f / Math.max(1, totalFrames - 1);
+    const pose = createBasePose();
+    const env = Math.sin(t * Math.PI);
+
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.50, env), lerp(0.60, 0.18, env), -0.05],
+      [0.8, 1.0, 1.0, 1.0, 0.9], // Back of hand on forehead
+      [0.3, 0, -0.4],
+      false
+    );
+
+    const leftHand = createRestHand(pose[15], true);
+    pose[16] = rightHand[0];
+    const face = createFaceMesh(pose[0], 0.05, 0.2);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
+  }
+  return frames;
+}
+
+// ─── 23. EMERGENCY ──────────────────────────────────────────────────────────
+function generateEmergencyFrames(totalFrames: number): FrameLandmarks[] {
+  const frames: FrameLandmarks[] = [];
+  for (let f = 0; f < totalFrames; f++) {
+    const t = f / Math.max(1, totalFrames - 1);
+    const pose = createBasePose();
+    const env = Math.sin(t * Math.PI);
+    const shake = Math.sin(t * Math.PI * 10) * 0.025 * env;
+
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.38 + shake, env), lerp(0.60, 0.34 + shake, env), -0.08],
+      [1.0, 1.0, 1.0, 1.0, 1.0], // Wide open hands
+      [0, 0, 0.3],
+      false
+    );
+
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.62 - shake, env), lerp(0.60, 0.34 - shake, env), -0.08],
+      [1.0, 1.0, 1.0, 1.0, 1.0],
+      [0, 0, -0.3],
+      true
+    );
+
+    pose[16] = rightHand[0];
+    pose[15] = leftHand[0];
+    const face = createFaceMesh(pose[0], 0.2, 0.2);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
+  }
+  return frames;
+}
+
+// ─── 24. TIME ───────────────────────────────────────────────────────────────
+function generateTimeFrames(totalFrames: number): FrameLandmarks[] {
+  const frames: FrameLandmarks[] = [];
+  for (let f = 0; f < totalFrames; f++) {
+    const t = f / Math.max(1, totalFrames - 1);
+    const pose = createBasePose();
+    const env = Math.sin(t * Math.PI);
+    const tap = Math.sin(t * Math.PI * 4) * 0.02 * (t > 0.25 && t < 0.8 ? 1 : 0);
+
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.52, env), lerp(0.60, 0.42, env), -0.06],
+      [0.1, 0.1, 0.1, 0.1, 0.1], // Closed fist representing watch wrist
+      [0, 0, 1.4],
+      true
+    );
+
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.52, env), lerp(0.60, 0.36 + tap, env), -0.06],
+      [0.1, 1.0, 0.1, 0.1, 0.1], // Index tapping watch
+      [0, 0, -0.6],
+      false
+    );
+
+    pose[15] = leftHand[0];
+    pose[16] = rightHand[0];
+    const face = createFaceMesh(pose[0], 0.05, 0.5 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
+  }
+  return frames;
+}
+
+// ─── 25. FAMILY ─────────────────────────────────────────────────────────────
+function generateFamilyFrames(totalFrames: number): FrameLandmarks[] {
+  const frames: FrameLandmarks[] = [];
+  for (let f = 0; f < totalFrames; f++) {
+    const t = f / Math.max(1, totalFrames - 1);
+    const pose = createBasePose();
+    const env = Math.sin(t * Math.PI);
+    const circle = Math.sin(t * Math.PI * 2);
+
+    const rightHand = buildNaturalHandPose(
+      [lerp(0.41, 0.45 - circle * 0.04, env), lerp(0.60, 0.40, env), -0.06],
+      [0.3, 0.3, 0.9, 0.9, 0.9], // F circle joining
+      [0, 0, 0],
+      false
+    );
+
+    const leftHand = buildNaturalHandPose(
+      [lerp(0.59, 0.55 + circle * 0.04, env), lerp(0.60, 0.40, env), -0.06],
+      [0.3, 0.3, 0.9, 0.9, 0.9],
+      [0, 0, 0],
+      true
+    );
+
+    pose[16] = rightHand[0];
+    pose[15] = leftHand[0];
+    const face = createFaceMesh(pose[0], 0.1 * env, 0.8 * env);
+    frames.push({ poseLandmarks: pose, leftHandLandmarks: leftHand, rightHandLandmarks: rightHand, faceLandmarks: face });
+  }
   return frames;
 }

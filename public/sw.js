@@ -72,13 +72,15 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
         if (cachedResponse) return cachedResponse;
-        return fetch(request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return networkResponse;
-        });
+        return fetch(request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              const clone = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            }
+            return networkResponse;
+          })
+          .catch(() => new Response('', { status: 404 }));
       })
     );
     return;
@@ -101,8 +103,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 5. Default: Network with Cache Fallback
+  // 5. Default: Network with Cache Fallback (Never returns undefined)
   event.respondWith(
-    fetch(request).catch(() => caches.match(request))
+    fetch(request).catch(async () => {
+      const match = await caches.match(request);
+      return match || new Response('', { status: 408, statusText: 'Offline or Network Timeout' });
+    })
   );
 });
