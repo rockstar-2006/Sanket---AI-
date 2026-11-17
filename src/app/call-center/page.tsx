@@ -95,9 +95,9 @@ const PROVIDER_MODELS: Record<AIProvider, { id: string; name: string; shortName:
     { id: 'o3-mini', name: 'OpenAI o3-mini (Reasoning Engine)', shortName: 'o3-mini' },
   ],
   groq: [
-    { id: 'llama-3.3-70b-versatile', name: 'Meta Llama 3.3 70B (Sub-150ms on Groq)', shortName: 'Llama 3.3 70B' },
-    { id: 'llama-3.1-8b-instant', name: 'Meta Llama 3.1 8B (Sub-80ms Instant)', shortName: 'Llama 3.1 8B' },
-    { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B (Ultra Low Latency)', shortName: 'Mixtral 8x7B' },
+    { id: 'openai/gpt-oss-20b', name: 'OpenAI GPT OSS 20B (1000 T/s - Fastest)', shortName: 'GPT OSS 20B' },
+    { id: 'openai/gpt-oss-120b', name: 'OpenAI GPT OSS 120B (High Precision)', shortName: 'GPT OSS 120B' },
+    { id: 'gemma2-9b-it', name: 'Google Gemma 2 9B (Production)', shortName: 'Gemma 2 9B' },
   ],
   openrouter: [
     { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet via OpenRouter', shortName: 'Claude 3.5' },

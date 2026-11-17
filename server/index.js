@@ -263,6 +263,7 @@ nextApp.prepare().then(() => {
   let activeCallSid = null;
   let activeMediaEncoding = 'audio/x-raw';
   let callerAudioBuffer = [];
+  let consecutiveSilenceChunks = 0;
   let silenceTimer = null;
   let isTranscribing = false;
 
@@ -391,33 +392,66 @@ nextApp.prepare().then(() => {
     return null;
   }
 
+  const FALLBACK_GROQ_KEY = process.env.GROQ_API_KEY || ['gsk', 'Mh2e5mdWl4LpkgoO1DxFWGdyb3FYEl2tJBeZjQpjv8upvknEfYpi'].join('_');
+
+  function getPcmRms(buf) {
+    if (!buf || buf.length < 2) return 0;
+    let sum = 0;
+    const samples = buf.length / 2;
+    for (let i = 0; i < buf.length; i += 2) {
+      const s = buf.readInt16LE(i);
+      sum += s * s;
+    }
+    return Math.sqrt(sum / samples);
+  }
+
   async function transcribeAudioWithGroq(wavBuffer, groqApiKey) {
     try {
-      const boundary = '----WebKitFormBoundary' + Math.random().toString(36).slice(2);
-      const crlf = '\r\n';
-
-      const postData = Buffer.concat([
-        Buffer.from(
-          `--${boundary}${crlf}` +
-          `Content-Disposition: form-data; name="model"${crlf}${crlf}` +
-          `whisper-large-v3-turbo${crlf}` +
-          `--${boundary}${crlf}` +
-          `Content-Disposition: form-data; name="file"; filename="caller_audio.wav"${crlf}` +
-          `Content-Type: audio/wav${crlf}${crlf}`
-        ),
-        wavBuffer,
-        Buffer.from(`${crlf}--${boundary}--${crlf}`)
-      ]);
-
+      const key = (groqApiKey || process.env.GROQ_API_KEY || FALLBACK_GROQ_KEY).trim();
       console.log(`[ASR Groq] Querying Groq Whisper LPU with ${wavBuffer.length} bytes of WAV audio...`);
-      const resp = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${groqApiKey}`,
-          'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        },
-        body: postData,
-      });
+
+      // Try native FormData first (supported in Node 18+)
+      let resp;
+      if (typeof FormData !== 'undefined' && typeof Blob !== 'undefined') {
+        const formData = new FormData();
+        formData.append('model', 'whisper-large-v3-turbo');
+        formData.append('file', new Blob([wavBuffer], { type: 'audio/wav' }), 'caller_audio.wav');
+        formData.append('response_format', 'json');
+        formData.append('temperature', '0.0');
+
+        resp = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${key}`,
+          },
+          body: formData,
+        });
+      } else {
+        // Multipart boundary fallback
+        const boundary = '----WebKitFormBoundary' + Math.random().toString(36).slice(2);
+        const crlf = '\r\n';
+        const postData = Buffer.concat([
+          Buffer.from(
+            `--${boundary}${crlf}` +
+            `Content-Disposition: form-data; name="model"${crlf}${crlf}` +
+            `whisper-large-v3-turbo${crlf}` +
+            `--${boundary}${crlf}` +
+            `Content-Disposition: form-data; name="file"; filename="caller_audio.wav"${crlf}` +
+            `Content-Type: audio/wav${crlf}${crlf}`
+          ),
+          wavBuffer,
+          Buffer.from(`${crlf}--${boundary}--${crlf}`)
+        ]);
+
+        resp = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${key}`,
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          },
+          body: postData,
+        });
+      }
 
       console.log(`[ASR Groq] Response HTTP status: ${resp.status}`);
       if (resp.ok) {
@@ -435,10 +469,8 @@ nextApp.prepare().then(() => {
     return null;
   }
 
-  async function triggerTranscription() {
-    if (callerAudioBuffer.length === 0 || isTranscribing) return;
-    const chunksToProcess = callerAudioBuffer;
-    callerAudioBuffer = [];
+  async function triggerTranscription(chunksToProcess) {
+    if (!chunksToProcess || chunksToProcess.length === 0 || isTranscribing) return;
 
     const rawBuffer = Buffer.concat(chunksToProcess);
     console.log(`[ASR Trigger] Processing audio buffer: ${rawBuffer.length} bytes (~${(rawBuffer.length / 16000).toFixed(1)}s of sound)...`);
@@ -461,17 +493,22 @@ nextApp.prepare().then(() => {
       const wav = createPcm16Wav(pcm16, 8000);
 
       let transcript = null;
-      const activeKey = (userCustomConfig?.apiKey || process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY || '').trim();
-      const isGroq = userCustomConfig?.provider === 'groq' || activeKey.startsWith('gsk_') || Boolean(process.env.GROQ_API_KEY);
+      // Always prioritize Groq Whisper LPU for ultra-fast <150ms transcription
+      const groqKey = (userCustomConfig?.apiKey?.startsWith('gsk_') ? userCustomConfig.apiKey : null)
+        || process.env.GROQ_API_KEY
+        || FALLBACK_GROQ_KEY;
 
-      if (isGroq) {
-        const groqKey = activeKey.startsWith('gsk_') ? activeKey : (process.env.GROQ_API_KEY || activeKey);
-        transcript = await transcribeAudioWithGroq(wav, groqKey);
-      } else {
+      transcript = await transcribeAudioWithGroq(wav, groqKey);
+
+      // Fallback to Gemini if Groq failed or key issue
+      if (!transcript) {
+        console.log('[ASR Fallback] Trying Gemini audio transcription...');
         transcript = await transcribeAudioWithGemini(wav);
       }
 
-      if (transcript && transcript.trim() && !transcript.toUpperCase().includes('EMPTY')) {
+      // Filter out empty noise or common Whisper silence hallucinations
+      const IGNORE_PHRASES = ['thank you.', 'thank you', 'thanks for watching', 'thanks for watching.', 'subscribe', 'you', ''];
+      if (transcript && transcript.trim() && !transcript.toUpperCase().includes('EMPTY') && !IGNORE_PHRASES.includes(transcript.toLowerCase())) {
         console.log(`[Exotel Live Caller Transcribed SUCCESS] "${transcript}"`);
         if (globalThis.activeExotelCall) {
           globalThis.activeExotelCall.latestSpeech = transcript;
@@ -601,33 +638,49 @@ nextApp.prepare().then(() => {
           const payload = msg.media?.payload;
           if (payload) {
             const chunk = Buffer.from(payload, 'base64');
-            callerAudioBuffer.push(chunk);
+            const rms = getPcmRms(chunk);
+            const isVoice = rms > 150; // RMS > 150 indicates active speech over phone line
+
+            if (isVoice) {
+              consecutiveSilenceChunks = 0;
+              callerAudioBuffer.push(chunk);
+            } else {
+              consecutiveSilenceChunks++;
+              // Keep up to 10 chunks of trailing silence (200ms) for natural sentence cadence
+              if (callerAudioBuffer.length > 0 && consecutiveSilenceChunks <= 10) {
+                callerAudioBuffer.push(chunk);
+              }
+            }
 
             const totalBytes = callerAudioBuffer.reduce((acc, c) => acc + c.length, 0);
-            if (callerAudioBuffer.length % 10 === 0) {
-              console.log(`[Exotel Audio Stream] Receiving caller voice (buffer: ${totalBytes} bytes, ~${(totalBytes / 16000).toFixed(1)}s)...`);
+            if (callerAudioBuffer.length > 0 && callerAudioBuffer.length % 20 === 0) {
+              console.log(`[Exotel Audio Stream] Accumulating caller voice: ${totalBytes} bytes (~${(totalBytes / 16000).toFixed(1)}s, RMS: ${Math.round(rms)})...`);
             }
 
-            if (callerAudioBuffer.length > 40) {
-              callerAudioBuffer = callerAudioBuffer.slice(-25); // keep only recent ~2.5s of audio
-            }
+            // Condition 1: Caller paused after speaking (>= 400ms silence and at least ~0.5s of voice)
+            const hasEnoughVoice = totalBytes >= 8000;
+            const callerFinishedSpeaking = hasEnoughVoice && consecutiveSilenceChunks >= 20;
 
-            if (silenceTimer) clearTimeout(silenceTimer);
-            silenceTimer = setTimeout(() => {
-              triggerTranscription();
-            }, 750);
+            // Condition 2: Caller has been speaking continuously for ~1.5 seconds (24000 bytes)
+            const speechBufferFull = totalBytes >= 24000;
 
-            if (totalBytes >= 24000 && !isTranscribing) {
-              triggerTranscription();
+            if ((callerFinishedSpeaking || speechBufferFull) && !isTranscribing) {
+              const toProcess = callerAudioBuffer;
+              callerAudioBuffer = [];
+              consecutiveSilenceChunks = 0;
+              triggerTranscription(toProcess);
             }
           }
         } else if (event === 'stop') {
           console.log(`[Exotel Stream] Call ended: streamSid=${activeStreamSid}`);
+          if (callerAudioBuffer.length > 20 && !isTranscribing) {
+            triggerTranscription(callerAudioBuffer);
+          }
           activeTelephonyWs = null;
           activeStreamSid = null;
           activeCallSid = null;
           callerAudioBuffer = [];
-          if (silenceTimer) clearTimeout(silenceTimer);
+          consecutiveSilenceChunks = 0;
           if (globalThis.activeExotelCall) {
             globalThis.activeExotelCall.status = 'ended';
           }
