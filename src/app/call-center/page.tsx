@@ -327,23 +327,29 @@ export default function CallCenterPage() {
 
   // ─── Real-Time Inbound GSM Call Listener (Exotel Webhook Polling) ───────────
   useEffect(() => {
-    if (callStatus !== 'idle') return;
+    if (callStatus === 'ended') return;
 
     const pollInterval = setInterval(async () => {
       try {
         const res = await fetch('/api/telephony/exotel');
         if (res.ok) {
           const data = await res.json();
-          if (data?.activeCall && data.activeCall.status === 'ringing') {
-            setActiveCaller({
-              name: `Caller (${data.activeCall.from})`,
-              number: data.activeCall.from,
-            });
-            setCallStatus('ringing');
+          if (data?.activeCall) {
+            if (callStatus === 'idle' && data.activeCall.status === 'ringing') {
+              setActiveCaller({
+                name: `Caller (${data.activeCall.from})`,
+                number: data.activeCall.from,
+              });
+              setCallStatus('ringing');
+            }
+            if (data.activeCall.latestSpeech && callStatus === 'connected') {
+              addTranscript('caller', data.activeCall.latestSpeech);
+              fetch('/api/telephony/exotel?action=clearSpeech').catch(() => {});
+            }
           }
         }
       } catch {}
-    }, 2000);
+    }, 1500);
 
     return () => clearInterval(pollInterval);
   }, [callStatus]);
@@ -507,15 +513,21 @@ export default function CallCenterPage() {
     scenarioStepRef.current = 0;
     clearPendingSentence();
     fetch('/api/telephony/exotel?action=answer').catch(() => {});
-    const scenario = PRESET_SCENARIOS[currentScenarioIndex];
+
+    // Only inject preset scenario dialogue if this is a manual demo simulation, NEVER for real phone callers!
+    const isRealPhoneCall = activeCaller.name.includes('Caller') || (activeCaller.number && (activeCaller.number.startsWith('+') || activeCaller.number.startsWith('0')));
     if (callerReplyTimerRef.current) clearTimeout(callerReplyTimerRef.current);
-    callerReplyTimerRef.current = setTimeout(() => {
-      if (callStatusRef.current === 'connected') {
-        const firstMsg = scenario.dialogue[0];
-        addTranscript('caller', firstMsg);
-        speakCustomerVoice(firstMsg);
-      }
-    }, 500);
+
+    if (!isRealPhoneCall) {
+      const scenario = PRESET_SCENARIOS[currentScenarioIndex];
+      callerReplyTimerRef.current = setTimeout(() => {
+        if (callStatusRef.current === 'connected') {
+          const firstMsg = scenario.dialogue[0];
+          addTranscript('caller', firstMsg);
+          speakCustomerVoice(firstMsg);
+        }
+      }, 500);
+    }
   };
 
   const handleEndCall = () => {
@@ -551,19 +563,30 @@ export default function CallCenterPage() {
     // Instant local speech synthesis (Zero network delay, under 50ms, matching meeting room)
     fallbackSpeak(text);
 
-    const scenario = PRESET_SCENARIOS[currentScenarioIndex];
-    const nextStep = scenarioStepRef.current + 1;
-    if (nextStep < scenario.dialogue.length) {
-      scenarioStepRef.current = nextStep;
-      setScenarioStep(nextStep);
-      if (callerReplyTimerRef.current) clearTimeout(callerReplyTimerRef.current);
-      callerReplyTimerRef.current = setTimeout(() => {
-        if (callStatusRef.current === 'connected') {
-          const nextMsg = scenario.dialogue[nextStep];
-          addTranscript('caller', nextMsg);
-          speakCustomerVoice(nextMsg);
-        }
-      }, 2500);
+    // Dispatch spoken text to Exotel telephony gateway
+    fetch('/api/telephony/exotel?action=speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    }).catch(() => {});
+
+    // Only inject preset dialogue if it's a simulated demo, NEVER on a real phone call!
+    const isRealPhoneCall = activeCaller.name.includes('Caller') || (activeCaller.number && (activeCaller.number.startsWith('+') || activeCaller.number.startsWith('0')));
+    if (!isRealPhoneCall) {
+      const scenario = PRESET_SCENARIOS[currentScenarioIndex];
+      const nextStep = scenarioStepRef.current + 1;
+      if (nextStep < scenario.dialogue.length) {
+        scenarioStepRef.current = nextStep;
+        setScenarioStep(nextStep);
+        if (callerReplyTimerRef.current) clearTimeout(callerReplyTimerRef.current);
+        callerReplyTimerRef.current = setTimeout(() => {
+          if (callStatusRef.current === 'connected') {
+            const nextMsg = scenario.dialogue[nextStep];
+            addTranscript('caller', nextMsg);
+            speakCustomerVoice(nextMsg);
+          }
+        }, 2500);
+      }
     }
   };
 

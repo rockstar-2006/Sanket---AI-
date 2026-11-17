@@ -12,6 +12,8 @@ declare global {
     to: string;
     timestamp: string;
     status: 'ringing' | 'connected' | 'ended';
+    latestSpeech?: string;
+    latestAgentReply?: string;
   } | null;
 }
 
@@ -26,6 +28,13 @@ export async function GET(req: NextRequest) {
         globalThis.activeExotelCall.status = action === 'answer' ? 'connected' : 'ended';
       }
       return NextResponse.json({ status: 'ok', activeCall: globalThis.activeExotelCall });
+    }
+
+    if (action === 'clearSpeech') {
+      if (globalThis.activeExotelCall) {
+        delete globalThis.activeExotelCall.latestSpeech;
+      }
+      return NextResponse.json({ status: 'ok' });
     }
 
     const callSid = searchParams.get('CallSid') || searchParams.get('call_sid');
@@ -60,6 +69,20 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url);
+    const action = searchParams.get('action');
+
+    // Agent speaks from web dashboard -> send down the line
+    if (action === 'speak') {
+      let data: any = {};
+      try { data = await req.json(); } catch {}
+      const speechText = data.text || '';
+      if (globalThis.activeExotelCall) {
+        globalThis.activeExotelCall.latestAgentReply = speechText;
+      }
+      return NextResponse.json({ status: 'queued', text: speechText });
+    }
+
     const contentType = req.headers.get('content-type') || '';
     let payload: Record<string, any> = {};
 
@@ -83,15 +106,17 @@ export async function POST(req: NextRequest) {
       Digits,
     } = payload;
 
+    const callerSpeech = SpeechResult || Digits;
+
     console.log('[Exotel Inbound Call Webhook Event]', {
       CallSid,
       From,
       To,
       Direction,
       Status,
+      callerSpeech,
     });
 
-    // Save call into global memory so /call-center receives instant ringing event
     const callerId = From ? (From.startsWith('+') ? From : `+${From}`) : '+917381709385';
     globalThis.activeExotelCall = {
       callSid: CallSid || `EXO-${Date.now()}`,
@@ -99,6 +124,7 @@ export async function POST(req: NextRequest) {
       to: To || process.env.EXOTEL_PHONE_NUMBER || '',
       timestamp: new Date().toISOString(),
       status: 'ringing',
+      latestSpeech: callerSpeech || undefined,
     };
 
     // Return Passthru response for Exotel Applet
