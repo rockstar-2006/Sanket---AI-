@@ -288,64 +288,104 @@ nextApp.prepare().then(() => {
     }
   });
 
+  let cachedValidModels = null;
+  let lastModelsFetch = 0;
+
+  async function fetchValidGeminiModels(apiKey) {
+    if (cachedValidModels && (Date.now() - lastModelsFetch < 300000)) {
+      return cachedValidModels;
+    }
+    try {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        const models = (data.models || [])
+          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+          .map(m => m.name.replace(/^models\//, ''))
+          .filter(name => !name.includes('vision') && !name.includes('embedding'));
+        console.log('[Gemini Available Models for user key]:', models.slice(0, 10));
+        cachedValidModels = models;
+        lastModelsFetch = Date.now();
+        return models;
+      }
+    } catch (e) {
+      console.warn('[Fetch Models Error]', e.message);
+    }
+    return [];
+  }
+
   async function transcribeAudioWithGemini(wavBuffer) {
     const apiKey = (userCustomConfig?.apiKey || process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '').trim();
     if (!apiKey) {
       console.warn('[ASR Warning] No Gemini API key provided. Please enter your API key in the AI Settings dialog on the web screen.');
       return null;
     }
-    const base64Audio = wavBuffer.toString('base64');
+
+    const availableModels = await fetchValidGeminiModels(apiKey);
     const userChosenModel = userCustomConfig?.model?.trim();
     const candidateModels = Array.from(new Set([
       userChosenModel,
-      'gemini-2.0-flash',
-      'gemini-1.5-flash-latest',
-      'gemini-1.5-pro'
+      ...availableModels,
+      'gemini-3.8-flash',
+      'gemini-2.5-flash',
+      'gemini-1.5-flash'
     ].filter(Boolean)));
 
-    for (const model of candidateModels) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        console.log(`[ASR API] Querying model ${model} with ${wavBuffer.length} bytes of WAV audio...`);
-        const resp = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: 'audio/wav',
-                    data: base64Audio
-                  }
-                },
-                {
-                  text: 'You are an accurate real-time speech transcriber for a phone call with a deaf person. Transcribe what the caller said in this audio verbatim in English or Hindi. If there is no audible speech (only silence, breathing, background noise, or click), reply with "EMPTY". Return ONLY the exact transcribed words, no explanations or quotes.'
-                }
-              ]
-            }],
-            generationConfig: {
-              maxOutputTokens: 60,
-              temperature: 0.1
-            }
-          })
-        });
+    const base64Audio = wavBuffer.toString('base64');
 
-        console.log(`[ASR API] Model ${model} response status: HTTP ${resp.status}`);
-        if (resp.ok) {
-          const result = await resp.json();
-          const text = result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-          console.log(`[ASR API] Model ${model} raw output: "${text}"`);
-          if (text && !text.toUpperCase().includes('EMPTY') && text.length > 1) {
-            return text.replace(/^["']|["']$/g, '').trim();
+    for (const model of candidateModels) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+          console.log(`[ASR API] Querying model ${model} (attempt ${attempt + 1}) with ${wavBuffer.length} bytes of WAV audio...`);
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: 'audio/wav',
+                      data: base64Audio
+                    }
+                  },
+                  {
+                    text: 'You are an accurate real-time speech transcriber for a phone call with a deaf person. Transcribe what the caller said in this audio verbatim in English or Hindi. If there is no audible speech (only silence, breathing, background noise, or click), reply with "EMPTY". Return ONLY the exact transcribed words, no explanations or quotes.'
+                  }
+                ]
+              }],
+              generationConfig: {
+                maxOutputTokens: 60,
+                temperature: 0.1
+              }
+            })
+          });
+
+          console.log(`[ASR API] Model ${model} response status: HTTP ${resp.status}`);
+          if (resp.ok) {
+            const result = await resp.json();
+            const text = result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+            console.log(`[ASR API] Model ${model} raw output: "${text}"`);
+            if (text && !text.toUpperCase().includes('EMPTY') && text.length > 1) {
+              return text.replace(/^["']|["']$/g, '').trim();
+            }
+            return null;
           }
-          return null;
-        } else {
+
+          if (resp.status === 503) {
+            console.warn(`[ASR 503 Spike] Model ${model} is currently busy, waiting 600ms before retry...`);
+            await new Promise(r => setTimeout(r, 600));
+            continue;
+          }
+
           const errBody = await resp.text();
           console.warn(`[ASR API Error ${model} (${resp.status})]:`, errBody.slice(0, 200));
+          break; // Try next model on 404 or 400
+        } catch (err) {
+          console.warn(`[ASR ${model} attempt error]:`, err.message);
+          break;
         }
-      } catch (err) {
-        console.warn(`[ASR ${model} attempt error]:`, err.message);
       }
     }
     return null;
