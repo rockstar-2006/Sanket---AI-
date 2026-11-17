@@ -260,6 +260,7 @@ nextApp.prepare().then(() => {
   let activeTelephonyWs = null;
   let activeStreamSid = null;
   let activeCallSid = null;
+  let activeMediaEncoding = 'audio/x-raw';
   let callerAudioBuffer = [];
   let silenceTimer = null;
   let isTranscribing = false;
@@ -281,8 +282,8 @@ nextApp.prepare().then(() => {
     }
     const base64Audio = wavBuffer.toString('base64');
     const candidateModels = [
-      'gemini-1.5-flash',
       'gemini-2.0-flash',
+      'gemini-1.5-flash',
       'gemini-1.5-flash-8b',
       'gemini-1.5-pro'
     ];
@@ -330,12 +331,18 @@ nextApp.prepare().then(() => {
     const chunksToProcess = callerAudioBuffer;
     callerAudioBuffer = [];
 
-    const rawMulaw = Buffer.concat(chunksToProcess);
-    if (rawMulaw.length < 3200) return; // Ignore very short bursts (<0.4s)
+    const rawBuffer = Buffer.concat(chunksToProcess);
+    if (rawBuffer.length < 3200) return; // Ignore very short bursts (<0.4s)
 
     isTranscribing = true;
     try {
-      const pcm16 = mulawToPcm16(rawMulaw);
+      // Exotel streams SLIN / raw 16-bit PCM by default, or mu-law if configured
+      let pcm16;
+      if (activeMediaEncoding.includes('mulaw') || activeMediaEncoding.includes('ulaw')) {
+        pcm16 = mulawToPcm16(rawBuffer);
+      } else {
+        pcm16 = rawBuffer; // Already 16-bit linear PCM (SLIN) from Exotel
+      }
       const wav = createPcm16Wav(pcm16, 8000);
       const transcript = await transcribeAudioWithGemini(wav);
       if (transcript && transcript.trim()) {
@@ -368,9 +375,11 @@ nextApp.prepare().then(() => {
       const elevenKey = (process.env.ELEVENLABS_API_KEY || '').trim();
       const voiceId = (process.env.ELEVENLABS_VOICE_ID || 'CwhRBWXzGAHq8TQ4Fs17').trim();
 
-      let ulawBuffer = null;
+      let audioBuffer = null;
       if (elevenKey) {
-        const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=ulaw_8000`;
+        // Exotel expects 8kHz PCM (pcm_8000) or 8kHz mu-law (ulaw_8000)
+        const format = activeMediaEncoding.includes('mulaw') ? 'ulaw_8000' : 'pcm_8000';
+        const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=${format}`;
         const resp = await fetch(url, {
           method: 'POST',
           headers: {
@@ -389,26 +398,28 @@ nextApp.prepare().then(() => {
         });
         if (resp.ok) {
           const ab = await resp.arrayBuffer();
-          ulawBuffer = Buffer.from(ab);
+          audioBuffer = Buffer.from(ab);
         } else {
           console.warn('[Downlink ElevenLabs failed]:', await resp.text());
         }
       }
 
-      if (ulawBuffer && ulawBuffer.length > 0) {
-        console.log(`[Downlink Telephony] Streaming ${ulawBuffer.length} bytes of audio into phone line...`);
-        const CHUNK_SIZE = 160; // 20ms at 8kHz
+      if (audioBuffer && audioBuffer.length > 0) {
+        console.log(`[Downlink Telephony] Streaming ${audioBuffer.length} bytes of audio into phone line...`);
+        // 320 bytes = 20ms of 16-bit PCM at 8kHz, 160 bytes for mu-law
+        const CHUNK_SIZE = activeMediaEncoding.includes('mulaw') ? 160 : 320;
         let offset = 0;
         const streamTimer = setInterval(() => {
-          if (offset >= ulawBuffer.length || !activeTelephonyWs || activeTelephonyWs.readyState !== 1) {
+          if (offset >= audioBuffer.length || !activeTelephonyWs || activeTelephonyWs.readyState !== 1) {
             clearInterval(streamTimer);
             return;
           }
-          const chunk = ulawBuffer.subarray(offset, Math.min(offset + CHUNK_SIZE, ulawBuffer.length));
+          const chunk = audioBuffer.subarray(offset, Math.min(offset + CHUNK_SIZE, audioBuffer.length));
           offset += CHUNK_SIZE;
           try {
             activeTelephonyWs.send(JSON.stringify({
               event: 'media',
+              stream_sid: activeStreamSid,
               streamSid: activeStreamSid,
               media: {
                 payload: chunk.toString('base64')
@@ -439,13 +450,16 @@ nextApp.prepare().then(() => {
           console.log('[Exotel Stream] Handshake verified:', msg.protocol || 'Call');
         } else if (event === 'start') {
           activeTelephonyWs = ws;
-          activeStreamSid = msg.start?.streamSid || msg.streamSid;
-          activeCallSid = msg.start?.callSid;
+          // Support both snake_case (Exotel) and camelCase
+          activeStreamSid = msg.stream_sid || msg.start?.stream_sid || msg.start?.streamSid || msg.streamSid;
+          activeCallSid = msg.start?.call_sid || msg.call_sid || msg.start?.callSid || msg.callSid;
+          activeMediaEncoding = (msg.start?.media_format?.encoding || msg.start?.mediaFormat?.encoding || 'audio/x-raw').toLowerCase();
           callerAudioBuffer = [];
-          console.log(`[Exotel Stream] Call stream started: callSid=${activeCallSid}, streamSid=${activeStreamSid}`);
+          console.log(`[Exotel Stream] Call stream started: callSid=${activeCallSid}, streamSid=${activeStreamSid}, encoding=${activeMediaEncoding}`);
 
           if (globalThis.activeExotelCall) {
             globalThis.activeExotelCall.status = 'connected';
+            if (activeCallSid) globalThis.activeExotelCall.callSid = activeCallSid;
           }
 
           io.emit('telephony-call-status', {
