@@ -2070,7 +2070,12 @@ function MeetingRoomContent() {
   // ─── 4. WebRTC Signaling & Socket.IO Real-Time Peer Event Relay ─────────────
   useEffect(() => {
     const rawSignalingUrl = (process.env.NEXT_PUBLIC_SIGNALING_SERVER_URL || '').trim();
-    const isExternalSignaling = rawSignalingUrl && !rawSignalingUrl.includes('localhost');
+    // Guard against stale or unreachable external signaling domains; default to same-origin
+    const isExternalSignaling =
+      rawSignalingUrl &&
+      !rawSignalingUrl.includes('localhost') &&
+      !rawSignalingUrl.includes('sanket-signaling') &&
+      (typeof window !== 'undefined' ? rawSignalingUrl !== window.location.origin : true);
     const socket = isExternalSignaling
       ? io(rawSignalingUrl, { path: '/socket.io', transports: ['websocket', 'polling'] })
       : io({ path: '/socket.io', transports: ['websocket', 'polling'] });

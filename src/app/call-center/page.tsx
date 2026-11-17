@@ -277,6 +277,7 @@ export default function CallCenterPage() {
   const callerReplyTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recognitionRef = useRef<any>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const transcriptContainerRef = useRef<HTMLDivElement>(null);
 
   // Synchronized state refs to avoid closure staleness
   const callStatusRef = useRef(callStatus);
@@ -299,9 +300,14 @@ export default function CallCenterPage() {
     currentScenarioIndexRef.current = currentScenarioIndex;
   }, [currentScenarioIndex]);
 
-  // Auto-scroll transcripts
+  // Auto-scroll transcripts ONLY inside the chat container (never jump or scroll the browser window)
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (transcriptContainerRef.current) {
+      transcriptContainerRef.current.scrollTo({
+        top: transcriptContainerRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
   }, [transcripts]);
 
   // Call duration counter
@@ -998,7 +1004,10 @@ export default function CallCenterPage() {
               </div>
 
               {/* Transcript Chat Stream */}
-              <div className="flex-1 p-6 overflow-y-auto space-y-4 font-sans">
+              <div 
+                ref={transcriptContainerRef}
+                className="flex-1 p-6 overflow-y-auto space-y-4 font-sans max-h-[480px] scroll-smooth"
+              >
                 {transcripts.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 p-8">
                     <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-3">
@@ -1010,35 +1019,45 @@ export default function CallCenterPage() {
                     </p>
                   </div>
                 ) : (
-                  transcripts.map((t) => (
-                    <div
-                      key={t.id}
-                      className={`flex flex-col ${t.sender === 'caller' ? 'items-start' : 'items-end'}`}
-                    >
-                      <div className="flex items-center gap-2 text-[10px] text-slate-500 mb-1 px-1 font-mono">
-                        <span className="font-bold text-slate-700">
-                          {t.sender === 'caller' ? `Customer (${activeCaller.name})` : 'You (Deaf Executive)'}
-                        </span>
-                        <span>•</span>
-                        <span>{t.timestamp}</span>
-                        {t.gesture && (
-                          <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 border border-orange-200 text-[9px] font-bold">
-                            ISL: {t.gesture}
-                          </span>
-                        )}
-                      </div>
-
+                  <>
+                    {transcripts.map((t) => (
                       <div
-                        className={`max-w-[85%] rounded-2xl px-5 py-3.5 shadow-sm leading-relaxed ${
-                          t.sender === 'caller'
-                            ? 'bg-slate-100 border border-slate-200/80 text-slate-900 text-lg font-bold'
-                            : 'bg-orange-500 text-white rounded-br-none text-base font-semibold shadow-md shadow-orange-500/20'
-                        }`}
+                        key={t.id}
+                        className={`flex flex-col ${t.sender === 'caller' ? 'items-start' : 'items-end'}`}
                       >
-                        {t.text}
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500 mb-1 px-1 font-mono">
+                          <span className="font-bold text-slate-700">
+                            {t.sender === 'caller' ? `Customer (${activeCaller.name})` : 'You (Deaf Executive)'}
+                          </span>
+                          <span>•</span>
+                          <span>{t.timestamp}</span>
+                          {t.gesture && (
+                            <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 border border-orange-200 text-[9px] font-bold">
+                              ISL: {t.gesture}
+                            </span>
+                          )}
+                        </div>
+
+                        <div
+                          className={`max-w-[85%] rounded-2xl px-5 py-3.5 shadow-sm leading-relaxed ${
+                            t.sender === 'caller'
+                              ? 'bg-slate-100 border border-slate-200/80 text-slate-900 text-lg font-bold'
+                              : 'bg-orange-500 text-white rounded-br-none text-base font-semibold shadow-md shadow-orange-500/20'
+                          }`}
+                        >
+                          {t.text}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    ))}
+
+                    {/* Turn-Taking Cue: Tell Deaf User when it is their turn to reply */}
+                    {callStatus === 'connected' && transcripts.length > 0 && transcripts[transcripts.length - 1].sender === 'caller' && (
+                      <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 text-xs font-bold animate-pulse shadow-xs self-start my-2">
+                        <Hand className="w-4 h-4 text-amber-600 animate-bounce" />
+                        <span>👉 Your turn to reply! Sign into the camera or tap a quick reply below.</span>
+                      </div>
+                    )}
+                  </>
                 )}
                 <div ref={transcriptEndRef} />
               </div>

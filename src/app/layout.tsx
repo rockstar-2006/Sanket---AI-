@@ -8,7 +8,6 @@ import { PwaInstallPrompt } from '@/components/pwa/PwaInstallPrompt';
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ['latin'],
   variable: '--font-heading',
-  weight: ['400', '500', '600', '700', '800'],
   display: 'swap',
   fallback: ['system-ui', 'sans-serif'],
 });
@@ -16,7 +15,6 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-body',
-  weight: ['400', '500', '600', '700'],
   display: 'swap',
   fallback: ['system-ui', 'sans-serif'],
 });
@@ -24,7 +22,6 @@ const inter = Inter({
 const dancingScript = Dancing_Script({
   subsets: ['latin'],
   variable: '--font-cursive',
-  weight: ['500', '600', '700'],
   display: 'swap',
   fallback: ['cursive', 'sans-serif'],
 });
