@@ -2,28 +2,52 @@ import { NextRequest, NextResponse } from 'next/server';
 
 /**
  * Exotel Cloud Telephony Webhook & Call Gateway
- * Uses environment variables from process.env
+ * Synchronizes incoming GSM phone calls to the Sanket AI web dashboard
  */
+
+declare global {
+  var activeExotelCall: {
+    callSid: string;
+    from: string;
+    to: string;
+    timestamp: string;
+    status: 'ringing' | 'connected' | 'ended';
+  } | null;
+}
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
+    const action = searchParams.get('action');
+
+    // Dismiss active call from dashboard
+    if (action === 'dismiss' || action === 'answer') {
+      if (globalThis.activeExotelCall) {
+        globalThis.activeExotelCall.status = action === 'answer' ? 'connected' : 'ended';
+      }
+      return NextResponse.json({ status: 'ok', activeCall: globalThis.activeExotelCall });
+    }
+
     const callSid = searchParams.get('CallSid') || searchParams.get('call_sid');
     const from = searchParams.get('From') || searchParams.get('from') || 'Unknown';
     const to = searchParams.get('To') || searchParams.get('to') || process.env.EXOTEL_PHONE_NUMBER || '';
-    const callType = searchParams.get('CallType') || 'transcribe';
 
-    // Exotel sends GET requests for call status updates or passthru applet queries
+    if (callSid) {
+      globalThis.activeExotelCall = {
+        callSid,
+        from,
+        to,
+        timestamp: new Date().toISOString(),
+        status: 'ringing',
+      };
+    }
+
     return NextResponse.json({
       status: 'success',
       service: 'Sanket AI Exotel Telephony Gateway',
       accountSid: process.env.EXOTEL_ACCOUNT_SID || '',
       virtualExoPhone: to,
-      activeCall: callSid ? {
-        callSid,
-        from,
-        timestamp: new Date().toISOString(),
-      } : null,
+      activeCall: globalThis.activeExotelCall || null,
       appletResponse: {
         action: 'stream',
         greeting: 'Welcome to Sanket AI Accessible Telephony Bridge. Connecting to Deaf Executive.',
@@ -36,7 +60,6 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    // Exotel can send form-encoded or JSON payloads
     const contentType = req.headers.get('content-type') || '';
     let payload: Record<string, any> = {};
 
@@ -60,21 +83,29 @@ export async function POST(req: NextRequest) {
       Digits,
     } = payload;
 
-    console.log('[Exotel Webhook Inbound Call Event]', {
+    console.log('[Exotel Inbound Call Webhook Event]', {
       CallSid,
       From,
       To,
       Direction,
       Status,
-      RecordingUrl,
-      SpeechResult,
     });
 
-    // Inbound Call handling response for Exotel Applet
+    // Save call into global memory so /call-center receives instant ringing event
+    const callerId = From ? (From.startsWith('+') ? From : `+${From}`) : '+917381709385';
+    globalThis.activeExotelCall = {
+      callSid: CallSid || `EXO-${Date.now()}`,
+      from: callerId,
+      to: To || process.env.EXOTEL_PHONE_NUMBER || '',
+      timestamp: new Date().toISOString(),
+      status: 'ringing',
+    };
+
+    // Return Passthru response for Exotel Applet
     return NextResponse.json({
       success: true,
-      callSid: CallSid || `DEMO-${Date.now()}`,
-      callerNumber: From || '+919876543210',
+      callSid: globalThis.activeExotelCall.callSid,
+      callerNumber: callerId,
       action: 'connect_to_agent_dashboard',
       message: 'Incoming call routed to Sanket Inclusive Agent teleprompter',
       timestamp: new Date().toISOString()

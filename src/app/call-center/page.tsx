@@ -325,6 +325,29 @@ export default function CallCenterPage() {
     };
   }, [callStatus]);
 
+  // ─── Real-Time Inbound GSM Call Listener (Exotel Webhook Polling) ───────────
+  useEffect(() => {
+    if (callStatus !== 'idle') return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/telephony/exotel');
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.activeCall && data.activeCall.status === 'ringing') {
+            setActiveCaller({
+              name: `Caller (${data.activeCall.from})`,
+              number: data.activeCall.from,
+            });
+            setCallStatus('ringing');
+          }
+        }
+      } catch {}
+    }, 2000);
+
+    return () => clearInterval(pollInterval);
+  }, [callStatus]);
+
   // Start webcam and initialize live ISL Camera Recognizer
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -483,6 +506,7 @@ export default function CallCenterPage() {
     setScenarioStep(0);
     scenarioStepRef.current = 0;
     clearPendingSentence();
+    fetch('/api/telephony/exotel?action=answer').catch(() => {});
     const scenario = PRESET_SCENARIOS[currentScenarioIndex];
     if (callerReplyTimerRef.current) clearTimeout(callerReplyTimerRef.current);
     callerReplyTimerRef.current = setTimeout(() => {
@@ -497,6 +521,7 @@ export default function CallCenterPage() {
   const handleEndCall = () => {
     setCallStatus('ended');
     clearPendingSentence();
+    fetch('/api/telephony/exotel?action=dismiss').catch(() => {});
     if (callerReplyTimerRef.current) {
       clearTimeout(callerReplyTimerRef.current);
       callerReplyTimerRef.current = null;

@@ -167,7 +167,7 @@ function getDefaultModel(provider: AIProvider): string {
       return 'anthropic/claude-3.5-sonnet';
     case 'gemini':
     default:
-      return 'gemini-1.5-flash';
+      return 'gemini-1.5-flash-latest';
   }
 }
 
@@ -216,7 +216,8 @@ async function executeLLMCall(
 
   // 1. Google Gemini
   if (provider === 'gemini') {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${cleanKey}`;
+    const targetModel = cleanModel === 'gemini-1.5-flash' ? 'gemini-1.5-flash-latest' : cleanModel;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${cleanKey}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
