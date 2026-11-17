@@ -391,6 +391,50 @@ nextApp.prepare().then(() => {
     return null;
   }
 
+  async function transcribeAudioWithGroq(wavBuffer, groqApiKey) {
+    try {
+      const boundary = '----WebKitFormBoundary' + Math.random().toString(36).slice(2);
+      const crlf = '\r\n';
+
+      const postData = Buffer.concat([
+        Buffer.from(
+          `--${boundary}${crlf}` +
+          `Content-Disposition: form-data; name="model"${crlf}${crlf}` +
+          `whisper-large-v3-turbo${crlf}` +
+          `--${boundary}${crlf}` +
+          `Content-Disposition: form-data; name="file"; filename="caller_audio.wav"${crlf}` +
+          `Content-Type: audio/wav${crlf}${crlf}`
+        ),
+        wavBuffer,
+        Buffer.from(`${crlf}--${boundary}--${crlf}`)
+      ]);
+
+      console.log(`[ASR Groq] Querying Groq Whisper LPU with ${wavBuffer.length} bytes of WAV audio...`);
+      const resp = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${groqApiKey}`,
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        },
+        body: postData,
+      });
+
+      console.log(`[ASR Groq] Response HTTP status: ${resp.status}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        const text = data.text?.trim() || '';
+        console.log(`[ASR Groq SUCCESS] "${text}"`);
+        return text;
+      } else {
+        const errText = await resp.text();
+        console.warn('[ASR Groq Error]', errText.slice(0, 200));
+      }
+    } catch (err) {
+      console.warn('[ASR Groq Fetch Error]', err.message);
+    }
+    return null;
+  }
+
   async function triggerTranscription() {
     if (callerAudioBuffer.length === 0 || isTranscribing) return;
     const chunksToProcess = callerAudioBuffer;
@@ -404,6 +448,8 @@ nextApp.prepare().then(() => {
     }
 
     isTranscribing = true;
+    const safetyTimer = setTimeout(() => { isTranscribing = false; }, 6000);
+
     try {
       // Exotel streams SLIN / raw 16-bit PCM by default, or mu-law if configured
       let pcm16;
@@ -413,8 +459,19 @@ nextApp.prepare().then(() => {
         pcm16 = rawBuffer; // Already 16-bit linear PCM (SLIN) from Exotel
       }
       const wav = createPcm16Wav(pcm16, 8000);
-      const transcript = await transcribeAudioWithGemini(wav);
-      if (transcript && transcript.trim()) {
+
+      let transcript = null;
+      const activeKey = (userCustomConfig?.apiKey || process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY || '').trim();
+      const isGroq = userCustomConfig?.provider === 'groq' || activeKey.startsWith('gsk_') || Boolean(process.env.GROQ_API_KEY);
+
+      if (isGroq) {
+        const groqKey = activeKey.startsWith('gsk_') ? activeKey : (process.env.GROQ_API_KEY || activeKey);
+        transcript = await transcribeAudioWithGroq(wav, groqKey);
+      } else {
+        transcript = await transcribeAudioWithGemini(wav);
+      }
+
+      if (transcript && transcript.trim() && !transcript.toUpperCase().includes('EMPTY')) {
         console.log(`[Exotel Live Caller Transcribed SUCCESS] "${transcript}"`);
         if (globalThis.activeExotelCall) {
           globalThis.activeExotelCall.latestSpeech = transcript;
@@ -431,6 +488,7 @@ nextApp.prepare().then(() => {
     } catch (err) {
       console.error('[Exotel Transcription Error]', err);
     } finally {
+      clearTimeout(safetyTimer);
       isTranscribing = false;
     }
   }
@@ -550,12 +608,16 @@ nextApp.prepare().then(() => {
               console.log(`[Exotel Audio Stream] Receiving caller voice (buffer: ${totalBytes} bytes, ~${(totalBytes / 16000).toFixed(1)}s)...`);
             }
 
+            if (callerAudioBuffer.length > 40) {
+              callerAudioBuffer = callerAudioBuffer.slice(-25); // keep only recent ~2.5s of audio
+            }
+
             if (silenceTimer) clearTimeout(silenceTimer);
             silenceTimer = setTimeout(() => {
               triggerTranscription();
             }, 750);
 
-            if (totalBytes >= 24000) {
+            if (totalBytes >= 24000 && !isTranscribing) {
               triggerTranscription();
             }
           }
