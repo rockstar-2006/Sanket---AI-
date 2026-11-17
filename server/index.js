@@ -2,9 +2,66 @@ const http = require('http');
 const next = require('next');
 const { parse } = require('url');
 const { Server } = require('socket.io');
+const { WebSocketServer } = require('ws');
 
 const fs = require('fs');
 const path = require('path');
+
+// Auto-load environment variables from .env.local if present
+try {
+  const envLocalPath = path.join(__dirname, '..', '.env.local');
+  if (fs.existsSync(envLocalPath)) {
+    const lines = fs.readFileSync(envLocalPath, 'utf8').split('\n');
+    for (const line of lines) {
+      const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+      if (match) {
+        const key = match[1];
+        let val = (match[2] || '').trim();
+        if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+        if (val.startsWith("'") && val.endsWith("'")) val = val.slice(1, -1);
+        if (!process.env[key]) process.env[key] = val;
+      }
+    }
+  }
+} catch (e) {}
+
+// G.711 mu-law decoding & WAV audio utilities for live telecom streaming
+const ULAW_TO_PCM16 = new Int16Array(256);
+for (let i = 0; i < 256; i++) {
+  let u = ~i & 0xff;
+  let t = ((u & 0x0f) << 3) + 0x84;
+  t <<= (u & 0x70) >> 4;
+  let sample = (u & 0x80) ? (0x84 - t) : (t - 0x84);
+  ULAW_TO_PCM16[i] = sample;
+}
+
+function mulawToPcm16(mulawBuf) {
+  const pcmBuf = Buffer.alloc(mulawBuf.length * 2);
+  for (let i = 0; i < mulawBuf.length; i++) {
+    const sample = ULAW_TO_PCM16[mulawBuf[i]];
+    pcmBuf.writeInt16LE(sample, i * 2);
+  }
+  return pcmBuf;
+}
+
+function createPcm16Wav(pcm16Buffer, sampleRate = 8000) {
+  const dataLength = pcm16Buffer.length;
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + dataLength, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20); // 1 = Linear PCM
+  header.writeUInt16LE(1, 22); // mono
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(dataLength, 40);
+  return Buffer.concat([header, pcm16Buffer]);
+}
 
 // Auto-detect production build: If .next/BUILD_ID does not exist, run in development mode!
 const hasProductionBuild = fs.existsSync(path.join(__dirname, '..', '.next', 'BUILD_ID'));
@@ -197,6 +254,252 @@ nextApp.prepare().then(() => {
     }
   });
 
+  // ─── Live Telecom Audio Streaming Gateway (Exotel WebSocket) ─────────────
+  const telephonyWss = new WebSocketServer({ noServer: true });
+
+  let activeTelephonyWs = null;
+  let activeStreamSid = null;
+  let activeCallSid = null;
+  let callerAudioBuffer = [];
+  let silenceTimer = null;
+  let isTranscribing = false;
+
+  server.on('upgrade', (req, socket, head) => {
+    const { pathname } = parse(req.url);
+    if (pathname === '/api/telephony/stream') {
+      telephonyWss.handleUpgrade(req, socket, head, (ws) => {
+        telephonyWss.emit('connection', ws, req);
+      });
+    }
+  });
+
+  async function transcribeAudioWithGemini(wavBuffer) {
+    const apiKey = (process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '').trim();
+    if (!apiKey) {
+      console.warn('[ASR Warning] No GEMINI_API_KEY available for live speech transcription');
+      return null;
+    }
+    const base64Audio = wavBuffer.toString('base64');
+    const candidateModels = [
+      'gemini-1.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash-8b',
+      'gemini-1.5-pro'
+    ];
+
+    for (const model of candidateModels) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                {
+                  inline_data: {
+                    mime_type: 'audio/wav',
+                    data: base64Audio
+                  }
+                },
+                {
+                  text: 'You are an accurate live speech transcriber for a phone call with a deaf person. Transcribe what the caller said in this audio verbatim in English or Hindi. If there is no audible speech (only silence, breathing, background noise, or click), reply with "EMPTY". Return ONLY the exact transcribed words, no explanations or quotes.'
+                }
+              ]
+            }]
+          })
+        });
+
+        if (resp.ok) {
+          const result = await resp.json();
+          const text = result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+          if (text && !text.toUpperCase().includes('EMPTY') && text.length > 1) {
+            return text.replace(/^["']|["']$/g, '').trim();
+          }
+          return null;
+        }
+      } catch (err) {
+        console.warn(`[ASR ${model} attempt error]:`, err.message);
+      }
+    }
+    return null;
+  }
+
+  async function triggerTranscription() {
+    if (callerAudioBuffer.length === 0 || isTranscribing) return;
+    const chunksToProcess = callerAudioBuffer;
+    callerAudioBuffer = [];
+
+    const rawMulaw = Buffer.concat(chunksToProcess);
+    if (rawMulaw.length < 3200) return; // Ignore very short bursts (<0.4s)
+
+    isTranscribing = true;
+    try {
+      const pcm16 = mulawToPcm16(rawMulaw);
+      const wav = createPcm16Wav(pcm16, 8000);
+      const transcript = await transcribeAudioWithGemini(wav);
+      if (transcript && transcript.trim()) {
+        console.log(`[Exotel Live Caller Transcribed] "${transcript}"`);
+        if (globalThis.activeExotelCall) {
+          globalThis.activeExotelCall.latestSpeech = transcript;
+        }
+        io.emit('telephony-caller-speech', {
+          text: transcript,
+          callSid: activeCallSid,
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (err) {
+      console.error('[Exotel Transcription Error]', err);
+    } finally {
+      isTranscribing = false;
+    }
+  }
+
+  async function sendAgentVoiceDownlink(text) {
+    if (!text || !text.trim()) return;
+    if (!activeTelephonyWs || activeTelephonyWs.readyState !== 1 || !activeStreamSid) {
+      console.log('[Downlink Telephony] Telephony audio downlink idle (no active phone stream connected)');
+      return;
+    }
+
+    console.log(`[Downlink Telephony] Synthesizing human voice for caller: "${text}"`);
+    try {
+      const elevenKey = (process.env.ELEVENLABS_API_KEY || '').trim();
+      const voiceId = (process.env.ELEVENLABS_VOICE_ID || 'CwhRBWXzGAHq8TQ4Fs17').trim();
+
+      let ulawBuffer = null;
+      if (elevenKey) {
+        const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=ulaw_8000`;
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'xi-api-key': elevenKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            text: text.slice(0, 300),
+            model_id: 'eleven_flash_v2_5',
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.75,
+              use_speaker_boost: true
+            }
+          })
+        });
+        if (resp.ok) {
+          const ab = await resp.arrayBuffer();
+          ulawBuffer = Buffer.from(ab);
+        } else {
+          console.warn('[Downlink ElevenLabs failed]:', await resp.text());
+        }
+      }
+
+      if (ulawBuffer && ulawBuffer.length > 0) {
+        console.log(`[Downlink Telephony] Streaming ${ulawBuffer.length} bytes of audio into phone line...`);
+        const CHUNK_SIZE = 160; // 20ms at 8kHz
+        let offset = 0;
+        const streamTimer = setInterval(() => {
+          if (offset >= ulawBuffer.length || !activeTelephonyWs || activeTelephonyWs.readyState !== 1) {
+            clearInterval(streamTimer);
+            return;
+          }
+          const chunk = ulawBuffer.subarray(offset, Math.min(offset + CHUNK_SIZE, ulawBuffer.length));
+          offset += CHUNK_SIZE;
+          try {
+            activeTelephonyWs.send(JSON.stringify({
+              event: 'media',
+              streamSid: activeStreamSid,
+              media: {
+                payload: chunk.toString('base64')
+              }
+            }));
+          } catch (e) {
+            clearInterval(streamTimer);
+          }
+        }, 20);
+      }
+    } catch (err) {
+      console.error('[Downlink Synthesis Error]', err);
+    }
+  }
+
+  // Expose downlink function to globalThis so Next.js API routes can call it
+  globalThis.triggerTelephonySpeak = sendAgentVoiceDownlink;
+
+  telephonyWss.on('connection', (ws, req) => {
+    console.log('[Exotel Stream] Incoming WebSocket connection established from Exotel carrier trunk');
+
+    ws.on('message', async (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        const event = msg.event;
+
+        if (event === 'connected') {
+          console.log('[Exotel Stream] Handshake verified:', msg.protocol || 'Call');
+        } else if (event === 'start') {
+          activeTelephonyWs = ws;
+          activeStreamSid = msg.start?.streamSid || msg.streamSid;
+          activeCallSid = msg.start?.callSid;
+          callerAudioBuffer = [];
+          console.log(`[Exotel Stream] Call stream started: callSid=${activeCallSid}, streamSid=${activeStreamSid}`);
+
+          if (globalThis.activeExotelCall) {
+            globalThis.activeExotelCall.status = 'connected';
+          }
+
+          io.emit('telephony-call-status', {
+            status: 'connected',
+            callSid: activeCallSid,
+            streamSid: activeStreamSid
+          });
+        } else if (event === 'media') {
+          const payload = msg.media?.payload;
+          if (payload) {
+            const chunk = Buffer.from(payload, 'base64');
+            callerAudioBuffer.push(chunk);
+
+            if (silenceTimer) clearTimeout(silenceTimer);
+            silenceTimer = setTimeout(() => {
+              triggerTranscription();
+            }, 750);
+
+            const totalBytes = callerAudioBuffer.reduce((acc, c) => acc + c.length, 0);
+            if (totalBytes >= 24000) {
+              triggerTranscription();
+            }
+          }
+        } else if (event === 'stop') {
+          console.log(`[Exotel Stream] Call ended: streamSid=${activeStreamSid}`);
+          activeTelephonyWs = null;
+          activeStreamSid = null;
+          activeCallSid = null;
+          callerAudioBuffer = [];
+          if (silenceTimer) clearTimeout(silenceTimer);
+          if (globalThis.activeExotelCall) {
+            globalThis.activeExotelCall.status = 'ended';
+          }
+          io.emit('telephony-call-status', { status: 'ended' });
+        }
+      } catch (e) {
+        console.error('[Exotel Stream Message Error]', e);
+      }
+    });
+
+    ws.on('close', () => {
+      console.log('[Exotel Stream] WebSocket disconnected from carrier');
+      if (activeTelephonyWs === ws) {
+        activeTelephonyWs = null;
+        activeStreamSid = null;
+        activeCallSid = null;
+      }
+    });
+
+    ws.on('error', (err) => {
+      console.error('[Exotel Stream Socket Error]', err);
+    });
+  });
+
   const io = new Server(server, {
     cors: {
       origin: true,
@@ -344,6 +647,11 @@ nextApp.prepare().then(() => {
       if (targetRoom) {
         socket.to(targetRoom).emit('signer-speech-event', data);
       }
+    });
+
+    socket.on('telephony-agent-speak', async ({ text }) => {
+      console.log('[Socket.IO] Telephony agent spoke:', text);
+      await sendAgentVoiceDownlink(text);
     });
 
     socket.on('leave-room', ({ roomId }) => {

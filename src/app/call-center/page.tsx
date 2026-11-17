@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { io, Socket } from 'socket.io-client';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { 
@@ -325,7 +326,36 @@ export default function CallCenterPage() {
     };
   }, [callStatus]);
 
-  // ─── Real-Time Inbound GSM Call Listener (Exotel Webhook Polling) ───────────
+  // ─── Real-Time Inbound GSM Call Listener (Exotel Webhook Polling & Socket.IO) ───
+  const socketRef = useRef<Socket | null>(null);
+
+  useEffect(() => {
+    const socket = io({
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+    });
+    socketRef.current = socket;
+
+    socket.on('telephony-caller-speech', (data: { text: string; caller?: string }) => {
+      if (data?.text && callStatusRef.current === 'connected') {
+        addTranscript('caller', data.text);
+      }
+    });
+
+    socket.on('telephony-call-status', (data: { status: string; callSid?: string }) => {
+      if (data?.status === 'connected') {
+        setCallStatus('connected');
+      } else if (data?.status === 'ended') {
+        setCallStatus('ended');
+        setTimeout(() => setCallStatus('idle'), 2000);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
   useEffect(() => {
     if (callStatus === 'ended') return;
 
@@ -562,6 +592,9 @@ export default function CallCenterPage() {
 
     // Instant local speech synthesis (Zero network delay, under 50ms, matching meeting room)
     fallbackSpeak(text);
+
+    // Emit via WebSocket & HTTP to ensure instantaneous telecom audio downlink
+    socketRef.current?.emit('telephony-agent-speak', { text });
 
     // Dispatch spoken text to Exotel telephony gateway
     fetch('/api/telephony/exotel?action=speak', {

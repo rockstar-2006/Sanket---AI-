@@ -80,6 +80,9 @@ export async function POST(req: NextRequest) {
       if (globalThis.activeExotelCall) {
         globalThis.activeExotelCall.latestAgentReply = speechText;
       }
+      if (typeof (globalThis as any).triggerTelephonySpeak === 'function') {
+        (globalThis as any).triggerTelephonySpeak(speechText);
+      }
       return NextResponse.json({ status: 'queued', text: speechText });
     }
 
