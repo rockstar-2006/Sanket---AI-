@@ -283,14 +283,14 @@ nextApp.prepare().then(() => {
     const base64Audio = wavBuffer.toString('base64');
     const candidateModels = [
       'gemini-2.0-flash',
-      'gemini-1.5-flash',
-      'gemini-1.5-flash-8b',
+      'gemini-1.5-flash-latest',
       'gemini-1.5-pro'
     ];
 
     for (const model of candidateModels) {
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        console.log(`[ASR API] Querying model ${model} with ${wavBuffer.length} bytes of WAV audio...`);
         const resp = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -298,26 +298,35 @@ nextApp.prepare().then(() => {
             contents: [{
               parts: [
                 {
-                  inline_data: {
-                    mime_type: 'audio/wav',
+                  inlineData: {
+                    mimeType: 'audio/wav',
                     data: base64Audio
                   }
                 },
                 {
-                  text: 'You are an accurate live speech transcriber for a phone call with a deaf person. Transcribe what the caller said in this audio verbatim in English or Hindi. If there is no audible speech (only silence, breathing, background noise, or click), reply with "EMPTY". Return ONLY the exact transcribed words, no explanations or quotes.'
+                  text: 'You are an accurate real-time speech transcriber for a phone call with a deaf person. Transcribe what the caller said in this audio verbatim in English or Hindi. If there is no audible speech (only silence, breathing, background noise, or click), reply with "EMPTY". Return ONLY the exact transcribed words, no explanations or quotes.'
                 }
               ]
-            }]
+            }],
+            generationConfig: {
+              maxOutputTokens: 60,
+              temperature: 0.1
+            }
           })
         });
 
+        console.log(`[ASR API] Model ${model} response status: HTTP ${resp.status}`);
         if (resp.ok) {
           const result = await resp.json();
           const text = result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+          console.log(`[ASR API] Model ${model} raw output: "${text}"`);
           if (text && !text.toUpperCase().includes('EMPTY') && text.length > 1) {
             return text.replace(/^["']|["']$/g, '').trim();
           }
           return null;
+        } else {
+          const errBody = await resp.text();
+          console.warn(`[ASR API Error ${model} (${resp.status})]:`, errBody.slice(0, 200));
         }
       } catch (err) {
         console.warn(`[ASR ${model} attempt error]:`, err.message);
@@ -332,7 +341,11 @@ nextApp.prepare().then(() => {
     callerAudioBuffer = [];
 
     const rawBuffer = Buffer.concat(chunksToProcess);
-    if (rawBuffer.length < 3200) return; // Ignore very short bursts (<0.4s)
+    console.log(`[ASR Trigger] Processing audio buffer: ${rawBuffer.length} bytes (~${(rawBuffer.length / 16000).toFixed(1)}s of sound)...`);
+    if (rawBuffer.length < 3200) {
+      console.log(`[ASR Trigger] Buffer too short (${rawBuffer.length} bytes), ignoring click/silence`);
+      return;
+    }
 
     isTranscribing = true;
     try {
@@ -346,15 +359,18 @@ nextApp.prepare().then(() => {
       const wav = createPcm16Wav(pcm16, 8000);
       const transcript = await transcribeAudioWithGemini(wav);
       if (transcript && transcript.trim()) {
-        console.log(`[Exotel Live Caller Transcribed] "${transcript}"`);
+        console.log(`[Exotel Live Caller Transcribed SUCCESS] "${transcript}"`);
         if (globalThis.activeExotelCall) {
           globalThis.activeExotelCall.latestSpeech = transcript;
+          globalThis.activeExotelCall.status = 'connected';
         }
         io.emit('telephony-caller-speech', {
           text: transcript,
           callSid: activeCallSid,
           timestamp: new Date().toISOString()
         });
+      } else {
+        console.log('[ASR] No speech detected in chunk (silence / empty)');
       }
     } catch (err) {
       console.error('[Exotel Transcription Error]', err);
@@ -473,12 +489,16 @@ nextApp.prepare().then(() => {
             const chunk = Buffer.from(payload, 'base64');
             callerAudioBuffer.push(chunk);
 
+            const totalBytes = callerAudioBuffer.reduce((acc, c) => acc + c.length, 0);
+            if (callerAudioBuffer.length % 10 === 0) {
+              console.log(`[Exotel Audio Stream] Receiving caller voice (buffer: ${totalBytes} bytes, ~${(totalBytes / 16000).toFixed(1)}s)...`);
+            }
+
             if (silenceTimer) clearTimeout(silenceTimer);
             silenceTimer = setTimeout(() => {
               triggerTranscription();
             }, 750);
 
-            const totalBytes = callerAudioBuffer.reduce((acc, c) => acc + c.length, 0);
             if (totalBytes >= 24000) {
               triggerTranscription();
             }

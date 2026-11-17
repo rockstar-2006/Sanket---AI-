@@ -337,7 +337,9 @@ export default function CallCenterPage() {
     socketRef.current = socket;
 
     socket.on('telephony-caller-speech', (data: { text: string; caller?: string }) => {
-      if (data?.text && callStatusRef.current === 'connected') {
+      console.log('[Socket.IO] Telephony caller speech event:', data);
+      if (data?.text) {
+        setCallStatus('connected');
         addTranscript('caller', data.text);
       }
     });
@@ -372,7 +374,8 @@ export default function CallCenterPage() {
               });
               setCallStatus('ringing');
             }
-            if (data.activeCall.latestSpeech && callStatus === 'connected') {
+            if (data.activeCall.latestSpeech) {
+              setCallStatus('connected');
               addTranscript('caller', data.activeCall.latestSpeech);
               fetch('/api/telephony/exotel?action=clearSpeech').catch(() => {});
             }
