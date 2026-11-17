@@ -86,6 +86,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: 'queued', text: speechText });
     }
 
+    // Sync client custom AI configuration from web dashboard
+    if (action === 'syncConfig') {
+      let config: any = {};
+      try { config = await req.json(); } catch {}
+      if (config?.apiKey && typeof (globalThis as any).setUserCustomConfig === 'function') {
+        (globalThis as any).setUserCustomConfig(config);
+      }
+      return NextResponse.json({ status: 'ok', synced: true });
+    }
+
     const contentType = req.headers.get('content-type') || '';
     let payload: Record<string, any> = {};
 

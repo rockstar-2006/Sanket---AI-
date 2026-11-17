@@ -246,6 +246,16 @@ export default function CallCenterPage() {
     aiConfigRef.current = aiConfig;
   }, [aiConfig]);
 
+  const syncAiConfigToServer = (config: CustomAIConfig) => {
+    if (!config?.apiKey) return;
+    socketRef.current?.emit('telephony-sync-config', config);
+    fetch('/api/telephony/exotel?action=syncConfig', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    }).catch(() => {});
+  };
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem('sanket_custom_ai_config');
@@ -265,6 +275,7 @@ export default function CallCenterPage() {
                   ? `OpenRouter (${parsed.model})`
                   : `Gemini (${parsed.model})`
         );
+        syncAiConfigToServer(parsed);
       }
     } catch {}
   }, []);
@@ -335,6 +346,13 @@ export default function CallCenterPage() {
       transports: ['websocket', 'polling'],
     });
     socketRef.current = socket;
+
+    socket.on('connect', () => {
+      console.log('[Socket.IO] Connected to telephony gateway, syncing AI key...');
+      if (aiConfigRef.current?.apiKey) {
+        syncAiConfigToServer(aiConfigRef.current);
+      }
+    });
 
     socket.on('telephony-caller-speech', (data: { text: string; caller?: string }) => {
       console.log('[Socket.IO] Telephony caller speech event:', data);
@@ -813,6 +831,7 @@ export default function CallCenterPage() {
               ? `OpenRouter (${tempConfig.model})`
               : `Gemini (${tempConfig.model})`
     );
+    syncAiConfigToServer(tempConfig);
     setShowConfigModal(false);
   };
 

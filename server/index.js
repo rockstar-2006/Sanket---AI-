@@ -257,6 +257,7 @@ nextApp.prepare().then(() => {
   // ─── Live Telecom Audio Streaming Gateway (Exotel WebSocket) ─────────────
   const telephonyWss = new WebSocketServer({ noServer: true });
 
+  let userCustomConfig = null;
   let activeTelephonyWs = null;
   let activeStreamSid = null;
   let activeCallSid = null;
@@ -264,6 +265,19 @@ nextApp.prepare().then(() => {
   let callerAudioBuffer = [];
   let silenceTimer = null;
   let isTranscribing = false;
+
+  // Expose setter for Next.js API routes
+  globalThis.setUserCustomConfig = (config) => {
+    if (config && config.apiKey) {
+      userCustomConfig = {
+        provider: config.provider || 'gemini',
+        model: config.model || 'gemini-2.0-flash',
+        apiKey: config.apiKey.trim().replace(/^['"]|['"]$/g, ''),
+        customBaseUrl: config.customBaseUrl
+      };
+      console.log(`[Config Sync HTTP] Telephony AI gateway updated: Provider=${userCustomConfig.provider}, Model=${userCustomConfig.model}`);
+    }
+  };
 
   server.on('upgrade', (req, socket, head) => {
     const { pathname } = parse(req.url);
@@ -275,17 +289,19 @@ nextApp.prepare().then(() => {
   });
 
   async function transcribeAudioWithGemini(wavBuffer) {
-    const apiKey = (process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '').trim();
+    const apiKey = (userCustomConfig?.apiKey || process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '').trim();
     if (!apiKey) {
-      console.warn('[ASR Warning] No GEMINI_API_KEY available for live speech transcription');
+      console.warn('[ASR Warning] No Gemini API key provided. Please enter your API key in the AI Settings dialog on the web screen.');
       return null;
     }
     const base64Audio = wavBuffer.toString('base64');
-    const candidateModels = [
+    const userChosenModel = userCustomConfig?.model?.trim();
+    const candidateModels = Array.from(new Set([
+      userChosenModel,
       'gemini-2.0-flash',
       'gemini-1.5-flash-latest',
       'gemini-1.5-pro'
-    ];
+    ].filter(Boolean)));
 
     for (const model of candidateModels) {
       try {
@@ -686,6 +702,18 @@ nextApp.prepare().then(() => {
     socket.on('telephony-agent-speak', async ({ text }) => {
       console.log('[Socket.IO] Telephony agent spoke:', text);
       await sendAgentVoiceDownlink(text);
+    });
+
+    socket.on('telephony-sync-config', (config) => {
+      if (config && config.apiKey) {
+        userCustomConfig = {
+          provider: config.provider || 'gemini',
+          model: config.model || 'gemini-2.0-flash',
+          apiKey: config.apiKey.trim().replace(/^['"]|['"]$/g, ''),
+          customBaseUrl: config.customBaseUrl
+        };
+        console.log(`[Config Sync Socket] Telephony AI gateway updated: Provider=${userCustomConfig.provider}, Model=${userCustomConfig.model}`);
+      }
     });
 
     socket.on('leave-room', ({ roomId }) => {
