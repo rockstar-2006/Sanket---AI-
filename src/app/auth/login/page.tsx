@@ -450,11 +450,13 @@ const MOOD_META = {
 function LoginForm({ 
   mood, 
   onBack, 
-  onSwitchMood 
+  onSwitchMood,
+  redirectUrl = '/dashboard',
 }: { 
   mood: Mood; 
   onBack: () => void; 
   onSwitchMood: (m: Mood) => void;
+  redirectUrl?: string;
 }) {
   const router = useRouter();
   const { signInWithEmail, signUpWithEmail, signInWithGoogle } = useAuth();
@@ -491,13 +493,13 @@ function LoginForm({
           return;
         }
         await signUpWithEmail(email.trim(), password, name.trim());
-        router.push('/dashboard');
+        router.push(redirectUrl);
       } else if (mood === 'lost') {
         await sendPasswordResetEmail(auth, email.trim());
         setResetSent(true);
       } else {
         await signInWithEmail(email.trim(), password);
-        router.push('/dashboard');
+        router.push(redirectUrl);
       }
     } catch (err: any) {
       console.error(err);
@@ -511,7 +513,7 @@ function LoginForm({
     setError('');
     try {
       await signInWithGoogle();
-      router.push('/dashboard');
+      router.push(redirectUrl);
     } catch {
       setError('Google sign-in failed. Please try again.');
     }
@@ -746,6 +748,7 @@ function LoginPageContent({
 }) {
   const searchParams = useSearchParams();
   const modeParam = searchParams.get('mode');
+  const redirectParam = searchParams.get('redirect') || '/dashboard';
 
   const initialPhase: 'intro' | 'login' = modeParam ? 'login' : defaultPhase;
   const initialMood: Mood = 
@@ -774,6 +777,7 @@ function LoginPageContent({
         setMood(null); 
       }} 
       onSwitchMood={(m) => setMood(m)}
+      redirectUrl={redirectParam}
     />
   );
 }
