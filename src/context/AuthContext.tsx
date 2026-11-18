@@ -27,12 +27,29 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window !== 'undefined' && auth?.currentUser) {
+      return auth.currentUser;
+    }
+    return null;
+  });
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined' && auth?.currentUser) {
+      return false;
+    }
+    return true;
+  });
 
   useEffect(() => {
+    // Safety watchdog: On mobile devices with slow network or IndexedDB locks,
+    // never block the application with an infinite spinner.
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 1800);
+
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      clearTimeout(safetyTimer);
       setUser(firebaseUser);
       setLoading(false);
 
@@ -50,7 +67,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(safetyTimer);
+      unsubscribe();
+    };
   }, []);
 
   const signInWithGoogle = async () => {

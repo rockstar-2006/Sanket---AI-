@@ -8,6 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { StackedCardsSection } from '@/components/sections/StackedCardsSection';
+import { ImageWithSkeleton } from '@/components/ui/ImageWithSkeleton';
 import { 
   ArrowRight, 
   Hand,
@@ -207,11 +208,11 @@ export default function LandingPage() {
 
                 {/* Center Hero REAL 3D Claymation Picture Illustration */}
                 <div className="lg:col-span-6 relative rounded-2xl overflow-hidden border border-slate-200 shadow-md group">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <ImageWithSkeleton
                     src="/sanket_hero_meeting.jpg"
                     alt="Sanket AI Video Meeting 3D Claymation Illustration"
-                    className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-500"
+                    containerClassName="w-full h-auto aspect-[16/10]"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   
                   {/* Overlay Live Subtitle Card */}
@@ -305,10 +306,10 @@ export default function LandingPage() {
             {/* Feature 1: Slide In From Left */}
             <motion.div {...fadeInFromLeft} className="p-6 rounded-3xl bg-white border border-slate-200/90 hover:border-orange-500/50 transition-all group shadow-xs hover:shadow-2xl space-y-6 flex flex-col justify-between">
               <div className="relative aspect-[4/3] rounded-2xl overflow-hidden border border-orange-200 group-hover:scale-[1.03] transition-transform shadow-xs">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <ImageWithSkeleton
                   src="/img_sign_candidate.jpg"
                   alt="Sign to Speech 3D Illustration"
+                  containerClassName="w-full h-full"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -326,10 +327,10 @@ export default function LandingPage() {
             {/* Feature 2: Slide Up Scale */}
             <motion.div {...fadeInScale} className="p-6 rounded-3xl bg-white border border-slate-200/90 hover:border-purple-500/50 transition-all group shadow-xs hover:shadow-2xl space-y-6 flex flex-col justify-between">
               <div className="relative aspect-[4/3] rounded-2xl overflow-hidden border border-purple-200 group-hover:scale-[1.03] transition-transform shadow-xs">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <ImageWithSkeleton
                   src="/img_subtitles_bubble.jpg"
                   alt="Live Subtitles 3D Illustration"
+                  containerClassName="w-full h-full"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -347,10 +348,10 @@ export default function LandingPage() {
             {/* Feature 3: Slide Up Scale */}
             <motion.div {...fadeInScale} className="p-6 rounded-3xl bg-white border border-slate-200/90 hover:border-emerald-500/50 transition-all group shadow-xs hover:shadow-2xl space-y-6 flex flex-col justify-between">
               <div className="relative aspect-[4/3] rounded-2xl overflow-hidden border border-emerald-200 group-hover:scale-[1.03] transition-transform shadow-xs">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <ImageWithSkeleton
                   src="/img_device_privacy.jpg"
                   alt="100% On-Device Privacy 3D Illustration"
+                  containerClassName="w-full h-full"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -368,10 +369,10 @@ export default function LandingPage() {
             {/* Feature 4: Slide In From Right */}
             <motion.div {...fadeInFromRight} className="p-6 rounded-3xl bg-white border border-slate-200/90 hover:border-blue-500/50 transition-all group shadow-xs hover:shadow-2xl space-y-6 flex flex-col justify-between">
               <div className="relative aspect-[4/3] rounded-2xl overflow-hidden border border-blue-200 group-hover:scale-[1.03] transition-transform shadow-xs">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <ImageWithSkeleton
                   src="/img_instant_invite.jpg"
                   alt="Instant Room Link 3D Illustration"
+                  containerClassName="w-full h-full"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -402,10 +403,10 @@ export default function LandingPage() {
             <motion.div {...fadeInFromLeft} className="lg:col-span-6 relative">
               <div className="relative rounded-3xl overflow-hidden border border-slate-200 shadow-2xl group p-3 bg-slate-50">
                 <div className="relative rounded-2xl overflow-hidden aspect-[4/3]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <ImageWithSkeleton
                     src="/sanket_solutions.jpg"
                     alt="Real-Time Sign Language Translation 3D Illustration"
+                    containerClassName="w-full h-full"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute top-4 left-4 bg-slate-900/90 backdrop-blur-md text-white px-3.5 py-1.5 rounded-full text-xs font-mono font-bold border border-slate-700">
@@ -480,10 +481,10 @@ export default function LandingPage() {
             <motion.div {...fadeInFromRight} className="lg:col-span-6 relative order-1 lg:order-2">
               <div className="relative rounded-3xl overflow-hidden border border-slate-200 shadow-2xl group p-3 bg-slate-50">
                 <div className="relative rounded-2xl overflow-hidden aspect-[4/3]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <ImageWithSkeleton
                     src="/img_subtitles_bubble.jpg"
                     alt="Live Speech Subtitles 3D Illustration"
+                    containerClassName="w-full h-full"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute top-4 left-4 bg-slate-900/90 backdrop-blur-md text-white px-3.5 py-1.5 rounded-full text-xs font-mono font-bold border border-slate-700">
@@ -519,10 +520,10 @@ export default function LandingPage() {
             {/* Scenario 1 */}
             <motion.div {...fadeInScale} className="p-6 rounded-3xl bg-white border border-slate-200/90 hover:border-orange-500/50 transition-all group shadow-xs hover:shadow-xl space-y-5 flex flex-col justify-between">
               <div className="relative aspect-[4/3] rounded-2xl overflow-hidden border border-orange-200 group-hover:scale-[1.03] transition-transform">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <ImageWithSkeleton
                   src="/img_hr_interviewer.jpg"
                   alt="Job Interviews 3D Illustration"
+                  containerClassName="w-full h-full"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -537,10 +538,10 @@ export default function LandingPage() {
             {/* Scenario 2 */}
             <motion.div {...fadeInScale} className="p-6 rounded-3xl bg-white border border-slate-200/90 hover:border-blue-500/50 transition-all group shadow-xs hover:shadow-xl space-y-5 flex flex-col justify-between">
               <div className="relative aspect-[4/3] rounded-2xl overflow-hidden border border-blue-200 group-hover:scale-[1.03] transition-transform">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <ImageWithSkeleton
                   src="/img_doctor_telehealth.jpg"
                   alt="Telemedicine Doctor 3D Illustration"
+                  containerClassName="w-full h-full"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -555,10 +556,10 @@ export default function LandingPage() {
             {/* Scenario 3 */}
             <motion.div {...fadeInScale} className="p-6 rounded-3xl bg-white border border-slate-200/90 hover:border-emerald-500/50 transition-all group shadow-xs hover:shadow-xl space-y-5 flex flex-col justify-between">
               <div className="relative aspect-[4/3] rounded-2xl overflow-hidden border border-emerald-200 group-hover:scale-[1.03] transition-transform">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <ImageWithSkeleton
                   src="/img_student_viva.jpg"
                   alt="Academic Viva Student 3D Illustration"
+                  containerClassName="w-full h-full"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -573,10 +574,10 @@ export default function LandingPage() {
             {/* Scenario 4 */}
             <motion.div {...fadeInScale} className="p-6 rounded-3xl bg-white border border-slate-200/90 hover:border-indigo-500/50 transition-all group shadow-xs hover:shadow-xl space-y-5 flex flex-col justify-between">
               <div className="relative aspect-[4/3] rounded-2xl overflow-hidden border border-indigo-200 group-hover:scale-[1.03] transition-transform">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <ImageWithSkeleton
                   src="/img_govt_verification.jpg"
                   alt="Verification Calls 3D Illustration"
+                  containerClassName="w-full h-full"
                   className="w-full h-full object-cover"
                 />
               </div>

@@ -16,24 +16,42 @@ export const PwaInstallPrompt: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState<boolean>(false);
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
-  const [isDismissed, setIsDismissed] = useState<boolean>(false);
+  const [isDismissed, setIsDismissed] = useState<boolean>(true); // Default true to prevent flash before checking storage
   const [isIOS, setIsIOS] = useState<boolean>(false);
   const [isDesktop, setIsDesktop] = useState<boolean>(true);
   const [showIosGuide, setShowIosGuide] = useState<boolean>(false);
 
   useEffect(() => {
-    // 1. Register Service Worker
+    // 0. Check localStorage dismissal and install flags
+    try {
+      const alreadyInstalled = localStorage.getItem('sanket_pwa_installed') === 'true';
+      const alreadyDismissed = localStorage.getItem('sanket_pwa_dismissed') === 'true';
+      if (alreadyInstalled || alreadyDismissed) {
+        setIsDismissed(true);
+        if (alreadyInstalled) setIsInstalled(true);
+      } else {
+        setIsDismissed(false);
+      }
+    } catch {
+      setIsDismissed(false);
+    }
+
+    // 1. Register Service Worker (Safe for immediate or post-load execution)
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
+      const registerSW = () => {
         navigator.serviceWorker
           .register('/sw.js')
           .then((reg) => {
-            console.log('[PWA] Service Worker registered successfully, scope:', reg.scope);
+            reg.update().catch(() => {});
           })
-          .catch((err) => {
-            console.warn('[PWA] Service Worker registration failed:', err);
-          });
-      });
+          .catch(() => {});
+      };
+
+      if (document.readyState === 'complete') {
+        registerSW();
+      } else {
+        window.addEventListener('load', registerSW, { once: true });
+      }
     }
 
     // 2. Check if already running in standalone / installed PWA window
@@ -43,6 +61,11 @@ export const PwaInstallPrompt: React.FC = () => {
         (window.navigator as any).standalone === true ||
         document.referrer.includes('android-app://');
       setIsStandalone(isStandaloneMode);
+      if (isStandaloneMode) {
+        try {
+          localStorage.setItem('sanket_pwa_installed', 'true');
+        } catch {}
+      }
     };
 
     checkStandalone();
@@ -64,6 +87,10 @@ export const PwaInstallPrompt: React.FC = () => {
     const handleAppInstalled = () => {
       setIsInstalled(true);
       setDeferredPrompt(null);
+      try {
+        localStorage.setItem('sanket_pwa_installed', 'true');
+        localStorage.setItem('sanket_pwa_dismissed', 'true');
+      } catch {}
       setTimeout(() => {
         setIsDismissed(true);
       }, 4000);
@@ -77,7 +104,7 @@ export const PwaInstallPrompt: React.FC = () => {
       } else if (deferredPrompt) {
         deferredPrompt.prompt();
       } else {
-        alert('To install Sanket AI on desktop: click the install icon (⊞ or ⬇) in your browser address bar.');
+        alert('To install Sanket AI on desktop: click the install icon in your browser address bar.');
       }
     };
 
@@ -92,6 +119,14 @@ export const PwaInstallPrompt: React.FC = () => {
     };
   }, [deferredPrompt]);
 
+  const handleDismiss = () => {
+    try {
+      localStorage.setItem('sanket_pwa_dismissed', 'true');
+    } catch {}
+    setIsDismissed(true);
+    setShowIosGuide(false);
+  };
+
   const handleInstallClick = async () => {
     if (isIOS) {
       setShowIosGuide(true);
@@ -100,7 +135,7 @@ export const PwaInstallPrompt: React.FC = () => {
 
     if (!deferredPrompt) {
       // In modern browsers, trigger standard shortcut advice
-      alert('To install Sanket AI on desktop: click the install icon (⊞ or ⬇) in your browser address bar.');
+      alert('To install Sanket AI on desktop: click the install icon in your browser address bar.');
       return;
     }
 
@@ -109,6 +144,10 @@ export const PwaInstallPrompt: React.FC = () => {
       const choiceResult = await deferredPrompt.userChoice;
       if (choiceResult.outcome === 'accepted') {
         setIsInstalled(true);
+        try {
+          localStorage.setItem('sanket_pwa_installed', 'true');
+          localStorage.setItem('sanket_pwa_dismissed', 'true');
+        } catch {}
       }
       setDeferredPrompt(null);
     } catch (err) {
@@ -165,8 +204,8 @@ export const PwaInstallPrompt: React.FC = () => {
             </div>
           </div>
           <button
-            onClick={() => setIsDismissed(true)}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+            onClick={handleDismiss}
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
             title="Dismiss"
           >
             <X className="w-4 h-4" />
@@ -176,14 +215,14 @@ export const PwaInstallPrompt: React.FC = () => {
         <div className="mt-3 flex items-center gap-2">
           <button
             onClick={handleInstallClick}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-md shadow-orange-500/20 transition active:scale-95"
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-md shadow-orange-500/20 transition active:scale-95 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
             <span>{isDesktop ? 'Install Desktop App' : 'Add to Home Screen'}</span>
           </button>
           <button
-            onClick={() => setIsDismissed(true)}
-            className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+            onClick={handleDismiss}
+            className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
           >
             Maybe Later
           </button>
@@ -200,8 +239,8 @@ export const PwaInstallPrompt: React.FC = () => {
                 <h3 className="font-bold text-sm">Install on iPhone / iPad</h3>
               </div>
               <button
-                onClick={() => setShowIosGuide(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+                onClick={handleDismiss}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -235,8 +274,8 @@ export const PwaInstallPrompt: React.FC = () => {
             </div>
 
             <button
-              onClick={() => setShowIosGuide(false)}
-              className="mt-5 w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 font-bold text-xs text-white transition"
+              onClick={handleDismiss}
+              className="mt-5 w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 font-bold text-xs text-white transition cursor-pointer"
             >
               Got it!
             </button>

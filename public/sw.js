@@ -1,27 +1,25 @@
 /**
- * Sanket AI — Production Progressive Web App Service Worker
- * Handles offline fallback, static shell asset caching, and lightning-fast starts
- * while keeping real-time WebRTC and Socket.IO connections 100% bypass/live.
+ * Sanket AI — Production Progressive Web App Service Worker v2.0
+ * Ultra-fast, non-blocking service worker that provides offline fallback
+ * while never intercepting or stalling dynamic Next.js navigation or WebRTC.
  */
 
-const CACHE_NAME = 'sanket-pwa-v1.0';
+const CACHE_NAME = 'sanket-pwa-v2.0';
 
-// Essential assets for offline app shell
+// Essential offline fallback assets only (never cache dynamic HTML routes like '/')
 const PRECACHE_ASSETS = [
-  '/',
-  '/manifest.json',
   '/offline.html',
+  '/manifest.json',
   '/icons/icon.svg',
   '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
-  '/models/isl_labels.json'
+  '/icons/icon-512x512.png'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-        console.warn('[SW] Pre-caching non-fatal warning:', err);
+        console.warn('[SW] Pre-caching non-fatal notice:', err);
       });
     }).then(() => self.skipWaiting())
   );
@@ -48,66 +46,53 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. DO NOT intercept Socket.IO, WebRTC, Firebase, or external dynamic API calls
+  // 2. DO NOT intercept Next.js internal chunks, APIs, WebSockets, or Cloud Providers
+  // Passing through natively ensures 0ms latency and eliminates all mobile startup stalls!
   if (
-    url.pathname.startsWith('/socket.io') ||
+    url.pathname.startsWith('/_next/') ||
     url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/socket.io') ||
     url.protocol === 'ws:' ||
     url.protocol === 'wss:' ||
     url.hostname.includes('firebase') ||
     url.hostname.includes('googleapis') ||
-    url.hostname.includes('livekit')
+    url.hostname.includes('livekit') ||
+    url.hostname.includes('deepgram') ||
+    url.hostname.includes('groq')
   ) {
     return;
   }
 
-  // 3. Static assets & Icons: Cache-First with Network fallback
+  // 3. Static Icons & Manifest: Cache-First with fast network fallback
   if (
     url.pathname.startsWith('/icons/') ||
-    url.pathname.endsWith('.png') ||
-    url.pathname.endsWith('.svg') ||
-    url.pathname.endsWith('.woff2') ||
-    url.pathname.startsWith('/models/isl_labels.json')
+    url.pathname === '/manifest.json'
   ) {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
         if (cachedResponse) return cachedResponse;
-        return fetch(request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              const clone = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-            }
-            return networkResponse;
-          })
-          .catch(() => new Response('', { status: 404 }));
+        return fetch(request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return networkResponse;
+        }).catch(() => new Response('', { status: 404 }));
       })
     );
     return;
   }
 
-  // 4. HTML Page Navigation: Network-First with Offline Fallback
+  // 4. HTML Navigation: Direct Network-First with Offline Fallback
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
-        .then((networkResponse) => {
-          return networkResponse;
-        })
-        .catch(async () => {
-          const cachedResponse = await caches.match(request);
-          if (cachedResponse) return cachedResponse;
-          const offlinePage = await caches.match('/offline.html');
-          return offlinePage || new Response('Offline - No connection', { status: 503 });
-        })
+      fetch(request).catch(async () => {
+        const offlinePage = await caches.match('/offline.html');
+        return offlinePage || new Response('Offline - No connection', { status: 503 });
+      })
     );
     return;
   }
 
-  // 5. Default: Network with Cache Fallback (Never returns undefined)
-  event.respondWith(
-    fetch(request).catch(async () => {
-      const match = await caches.match(request);
-      return match || new Response('', { status: 408, statusText: 'Offline or Network Timeout' });
-    })
-  );
+  // 5. All other assets pass through to the browser's native fast network stack natively!
 });

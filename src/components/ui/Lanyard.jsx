@@ -1199,9 +1199,11 @@ export const Lanyard = ({
         target: hit.point.clone()
       };
       press = { x: event.clientX, y: event.clientY, time: performance.now(), point: hit.point.clone() };
-      canvas.setPointerCapture?.(event.pointerId);
+      if (event.pointerType !== 'touch') {
+        canvas.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+      }
       setCursor('grabbing');
-      event.preventDefault();
       start();
     };
 
@@ -1222,9 +1224,11 @@ export const Lanyard = ({
     const onPointerUp = event => {
       if (!sim.grab) return;
       sim.grab = null;
-      if (press && event.type === 'pointerup' && performance.now() - press.time < 450) flip(press.point);
+      if (press && (event.type === 'pointerup' || event.type === 'touchend') && performance.now() - press.time < 450) flip(press.point);
       press = null;
-      canvas.releasePointerCapture?.(event.pointerId);
+      if (event.pointerType !== 'touch') {
+        canvas.releasePointerCapture?.(event.pointerId);
+      }
       setCursor(hovering && event.pointerType !== 'touch' ? 'grab' : '');
       start();
     };
@@ -1232,7 +1236,6 @@ export const Lanyard = ({
     const onTouchStart = event => {
       if (!settingsRef.current.interactive || event.touches.length !== 1) return;
       toPointer(event.touches[0]);
-      if (pickCard()) event.preventDefault();
     };
 
     canvas.addEventListener('pointerdown', onPointerDown);

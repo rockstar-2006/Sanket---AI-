@@ -489,13 +489,13 @@ export const InGameTutorialGuide: React.FC<InGameTutorialGuideProps> = ({
       {/* CUTSCENE MODAL: MASCOT ARRIVAL + CREDIT CARD + ID CARD PASS   */}
       {/* ──────────────────────────────────────────────────────────── */}
       {step === 0 ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-500 select-none font-body overflow-y-auto min-h-[100dvh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-[#060a12]/96 animate-in fade-in duration-300 select-none font-body overflow-y-auto min-h-[100dvh]">
           
           {/* Radial Spotlight Beam */}
           <div 
             className="fixed inset-0 pointer-events-none"
             style={{
-              background: 'radial-gradient(circle at 50% 40%, rgba(249, 115, 22, 0.22) 0%, rgba(15, 23, 42, 0.8) 60%, rgba(2, 6, 23, 0.98) 100%)',
+              background: 'radial-gradient(circle at 50% 40%, rgba(249, 115, 22, 0.18) 0%, rgba(15, 23, 42, 0.6) 60%, rgba(2, 6, 23, 0.95) 100%)',
             }}
           />
 
@@ -618,8 +618,9 @@ export const InGameTutorialGuide: React.FC<InGameTutorialGuideProps> = ({
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    transform: dropped ? 'translateY(0)' : 'translateY(-110vh)',
+                    transform: dropped ? 'translate3d(0, 0, 0)' : 'translate3d(0, -110vh, 0)',
                     transition: dropped ? 'transform 0.95s cubic-bezier(0.22, 1.45, 0.36, 1)' : 'none',
+                    willChange: 'transform',
                   }}
                 >
                   {/* Helicopter sitting above Character */}
@@ -628,9 +629,10 @@ export const InGameTutorialGuide: React.FC<InGameTutorialGuideProps> = ({
                       position: 'absolute',
                       top: -75,
                       left: '50%',
-                      transform: 'translateX(-50%)',
+                      transform: 'translate3d(-50%, 0, 0)',
                       opacity: helicVisible ? 1 : 0,
                       transition: 'opacity 0.4s ease, transform 0.6s ease',
+                      willChange: 'transform, opacity',
                     }}
                   >
                     <MiniHelicopter isFlying={true} />
@@ -779,11 +781,11 @@ export const InGameTutorialGuide: React.FC<InGameTutorialGuideProps> = ({
         /* ──────────────────────────────────────────────────────────── */
         <>
           {/* Subtle Dim Backdrop: Focuses dashboard without harsh borders */}
-          <div className="fixed inset-0 bg-slate-950/35 backdrop-blur-[2px] z-30 pointer-events-none transition-opacity duration-500" />
+          <div className="fixed inset-0 bg-slate-950/40 z-30 pointer-events-none transition-opacity duration-300" />
 
           {/* Clean Bottom-Left Docked Companion Card (Responsive: Full-width sheet on mobile, docked left on desktop) */}
           <div className="fixed bottom-3 sm:bottom-6 inset-x-3 sm:inset-x-auto sm:left-8 z-50 sm:max-w-md pointer-events-auto font-body animate-in slide-in-from-bottom-5 duration-300 select-none">
-            <div className="relative bg-white/98 backdrop-blur-md border border-slate-200/90 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-2xl shadow-slate-900/15 text-slate-900 space-y-3 sm:space-y-3.5">
+            <div className="relative bg-white border border-slate-200/90 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-2xl shadow-slate-900/15 text-slate-900 space-y-3 sm:space-y-3.5">
               
               {/* Mascot Sitting Proudly on Left / Top-Left */}
               <div className="absolute -top-12 sm:-top-14 left-3 sm:left-4 shrink-0 pointer-events-none">
