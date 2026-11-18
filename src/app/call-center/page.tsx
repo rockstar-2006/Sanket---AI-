@@ -45,7 +45,10 @@ import {
   Wand2,
   ChevronDown,
   ChevronUp,
-  Type
+  Type,
+  Bell,
+  BellRing,
+  VolumeX
 } from 'lucide-react';
 import { 
   ISLCameraRecognizerEngine, 
@@ -191,6 +194,146 @@ const PRESET_SCENARIOS: DemoScenario[] = [
   }
 ];
 
+// ─── Real Phone Ringtone Music Synthesizer (Realistic Smartphone Marimba / Chime) ───
+class RealPhoneRingtone {
+  private ctx: AudioContext | null = null;
+  private isPlaying: boolean = false;
+  private isMuted: boolean = false;
+  private loopTimer: NodeJS.Timeout | null = null;
+
+  start() {
+    if (this.isPlaying) return;
+    this.isPlaying = true;
+
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        if (!this.ctx || this.ctx.state === 'closed') {
+          this.ctx = new AudioCtx();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume().catch(() => {});
+        }
+      }
+    } catch {}
+
+    const unblockAudio = () => {
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('click', unblockAudio, { once: true });
+      window.addEventListener('touchstart', unblockAudio, { once: true });
+    }
+
+    const playCycle = () => {
+      if (!this.isPlaying) return;
+
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioCtx) return;
+        if (!this.ctx || this.ctx.state === 'closed') {
+          this.ctx = new AudioCtx();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+
+        if (!this.isMuted) {
+          const now = this.ctx.currentTime;
+
+          // Realistic smartphone marimba ringtone sequence:
+          const melody = [
+            // Phrase 1
+            { freq: 880.00, start: 0.00, dur: 0.16, vol: 0.35 }, // A5
+            { freq: 1108.73, start: 0.16, dur: 0.16, vol: 0.38 }, // C#6
+            { freq: 1318.51, start: 0.32, dur: 0.22, vol: 0.40 }, // E6
+            { freq: 1760.00, start: 0.54, dur: 0.36, vol: 0.42 }, // A6
+            { freq: 1318.51, start: 0.95, dur: 0.28, vol: 0.35 }, // E6
+
+            // Phrase 2
+            { freq: 739.99, start: 1.35, dur: 0.16, vol: 0.35 }, // F#5
+            { freq: 880.00, start: 1.51, dur: 0.16, vol: 0.38 }, // A5
+            { freq: 1108.73, start: 1.67, dur: 0.22, vol: 0.40 }, // C#6
+            { freq: 1479.98, start: 1.89, dur: 0.38, vol: 0.42 }, // F#6
+            { freq: 1108.73, start: 2.30, dur: 0.30, vol: 0.35 }, // C#6
+          ];
+
+          melody.forEach(({ freq, start, dur, vol }) => {
+            if (!this.ctx || !this.isPlaying || this.isMuted) return;
+
+            // Fundamental sine tone
+            const osc1 = this.ctx.createOscillator();
+            const gain1 = this.ctx.createGain();
+            osc1.type = 'sine';
+            osc1.frequency.setValueAtTime(freq, now + start);
+
+            // Harmonic chime overtone (triangle for acoustic ring resonance)
+            const osc2 = this.ctx.createOscillator();
+            const gain2 = this.ctx.createGain();
+            osc2.type = 'triangle';
+            osc2.frequency.setValueAtTime(freq * 2, now + start);
+
+            // Bell / marimba envelope (quick attack, gradual musical decay)
+            gain1.gain.setValueAtTime(0.0001, now + start);
+            gain1.gain.linearRampToValueAtTime(vol, now + start + 0.015);
+            gain1.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+
+            gain2.gain.setValueAtTime(0.0001, now + start);
+            gain2.gain.linearRampToValueAtTime(vol * 0.28, now + start + 0.015);
+            gain2.gain.exponentialRampToValueAtTime(0.0001, now + start + dur * 0.7);
+
+            osc1.connect(gain1);
+            osc2.connect(gain2);
+            gain1.connect(this.ctx.destination);
+            gain2.connect(this.ctx.destination);
+
+            osc1.start(now + start);
+            osc1.stop(now + start + dur + 0.05);
+            osc2.start(now + start);
+            osc2.stop(now + start + dur + 0.05);
+          });
+        }
+
+        // Phone tactile vibration pattern on mobile devices
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate([350, 150, 350, 150, 500]);
+        }
+
+        // Loop after 3.2 seconds
+        this.loopTimer = setTimeout(() => {
+          if (this.isPlaying) {
+            playCycle();
+          }
+        }, 3200);
+
+      } catch (e) {
+        console.warn('RealPhoneRingtone error:', e);
+      }
+    };
+
+    playCycle();
+  }
+
+  stop() {
+    this.isPlaying = false;
+    if (this.loopTimer) {
+      clearTimeout(this.loopTimer);
+      this.loopTimer = null;
+    }
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate(0);
+      } catch {}
+    }
+  }
+
+  setMuted(muted: boolean) {
+    this.isMuted = muted;
+  }
+}
+
 export default function CallCenterPage() {
   const { credits, deductCredits, openRechargeModal } = useWallet();
 
@@ -201,6 +344,46 @@ export default function CallCenterPage() {
     number: '+91 98450 12890'
   });
   const [callDuration, setCallDuration] = useState<number>(0);
+
+  // Phone Ringtone Engine & Mute Toggle
+  const ringtoneEngineRef = useRef<RealPhoneRingtone | null>(null);
+  const [isRingtoneMuted, setIsRingtoneMuted] = useState(false);
+
+  useEffect(() => {
+    if (!ringtoneEngineRef.current) {
+      ringtoneEngineRef.current = new RealPhoneRingtone();
+    }
+    const ringtone = ringtoneEngineRef.current;
+    ringtone.setMuted(isRingtoneMuted);
+
+    if (callStatus === 'ringing') {
+      ringtone.start();
+
+      // Trigger native browser notification if allowed
+      try {
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission === 'granted') {
+            new Notification(`Incoming Phone Call: ${activeCaller.name}`, {
+              body: `Incoming phone call from ${activeCaller.number}. Click to answer.`,
+              icon: '/pwa/icon-192x192.png',
+              tag: 'incoming-telecom-call',
+              requireInteraction: true,
+            });
+          } else if (Notification.permission === 'default') {
+            Notification.requestPermission().catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.warn('Notification error:', e);
+      }
+    } else {
+      ringtone.stop();
+    }
+
+    return () => {
+      ringtone.stop();
+    };
+  }, [callStatus, activeCaller, isRingtoneMuted]);
   const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
   const [currentScenarioIndex, setCurrentScenarioIndex] = useState(0);
   const [scenarioStep, setScenarioStep] = useState(0);
@@ -226,6 +409,8 @@ export default function CallCenterPage() {
   const [signedTokens, setSignedTokens] = useState<string[]>([]);
   const signedTokensRef = useRef<string[]>([]);
   const [composedSentence, setComposedSentence] = useState<string>('');
+  const composedSentenceRef = useRef<string>('');
+  const composeRequestIdRef = useRef<number>(0);
   const [autoSpeakCountdown, setAutoSpeakCountdown] = useState<number | null>(null);
   const [autoSpeakEnabled, setAutoSpeakEnabled] = useState<boolean>(true);
   const [isComposingWithAi, setIsComposingWithAi] = useState<boolean>(false);
@@ -327,14 +512,25 @@ export default function CallCenterPage() {
     }
   }, [transcripts]);
 
-  // Call duration counter & real-time credit consumption (1 credit per 10s of active relay)
+  // Call duration counter & real-time credit consumption (10 credits per minute)
+  const lastBilledMinuteRef = useRef<number>(0);
+  const callDurationRef = useRef<number>(0);
+
   useEffect(() => {
     if (callStatus === 'connected') {
+      lastBilledMinuteRef.current = 0;
+      callDurationRef.current = 0;
+
       timerRef.current = setInterval(() => {
         setCallDuration((prev) => {
           const nextSec = prev + 1;
-          if (nextSec > 0 && nextSec % 10 === 0) {
-            const hasCredits = deductCredits(1, 'Telecom Relay Call (10s usage)');
+          callDurationRef.current = nextSec;
+          const currentMinute = Math.floor(nextSec / 60);
+
+          // Deduct 10 credits at each completed 1-minute milestone (clean, unified billing)
+          if (currentMinute > lastBilledMinuteRef.current) {
+            lastBilledMinuteRef.current = currentMinute;
+            const hasCredits = deductCredits(10, `Telecom Voice Relay (${currentMinute} min active)`);
             if (!hasCredits) {
               handleEndCall();
               openRechargeModal();
@@ -377,8 +573,16 @@ export default function CallCenterPage() {
       }
     });
 
-    socket.on('telephony-call-status', (data: { status: string; callSid?: string }) => {
-      if (data?.status === 'connected') {
+    socket.on('telephony-call-status', (data: { status: string; callSid?: string; from?: string }) => {
+      if (data?.status === 'ringing') {
+        if (data.from) {
+          setActiveCaller({
+            name: `Caller (${data.from})`,
+            number: data.from,
+          });
+        }
+        setCallStatus('ringing');
+      } else if (data?.status === 'connected') {
         setCallStatus('connected');
       } else if (data?.status === 'ended') {
         setCallStatus('ended');
@@ -581,23 +785,24 @@ export default function CallCenterPage() {
   };
 
   const handleStartSimulatedCall = (scenario: DemoScenario) => {
+    if (credits < 10) {
+      openRechargeModal();
+      return;
+    }
     if (callerReplyTimerRef.current) clearTimeout(callerReplyTimerRef.current);
     clearPendingSentence();
     setActiveCaller({ name: scenario.callerName, number: scenario.callerNumber });
     setTranscripts([]);
     setScenarioStep(0);
     scenarioStepRef.current = 0;
-    setCallStatus('connected');
-    callerReplyTimerRef.current = setTimeout(() => {
-      if (callStatusRef.current === 'connected') {
-        const firstMsg = scenario.dialogue[0];
-        addTranscript('caller', firstMsg);
-        speakCustomerVoice(firstMsg);
-      }
-    }, 500);
+    setCallStatus('ringing');
   };
 
   const handleAnswerCall = () => {
+    if (credits < 10) {
+      openRechargeModal();
+      return;
+    }
     setCallStatus('connected');
     setTranscripts([]);
     setScenarioStep(0);
@@ -622,6 +827,15 @@ export default function CallCenterPage() {
   };
 
   const handleEndCall = () => {
+    // Pro-rate partial minute block if active for >= 30s beyond last billed minute
+    const finalSec = callDurationRef.current;
+    const remainderSec = finalSec % 60;
+    if (finalSec >= 30 && remainderSec >= 30) {
+      deductCredits(5, 'Telecom Voice Relay (Partial 30s block)');
+    }
+    lastBilledMinuteRef.current = 0;
+    callDurationRef.current = 0;
+
     setCallStatus('ended');
     clearPendingSentence();
     fetch('/api/telephony/exotel?action=dismiss').catch(() => {});
@@ -736,11 +950,15 @@ export default function CallCenterPage() {
     if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     setAutoSpeakCountdown(null);
 
-    const finalSentence = sentenceToSpeak || composedSentence;
+    // Cancel in-flight AI synthesis requests from this turn so late responses don't corrupt next turn
+    composeRequestIdRef.current++;
+
+    const finalSentence = (sentenceToSpeak || composedSentenceRef.current || composedSentence).trim();
     const finalGesture = gestureLabel || (signedTokensRef.current.length > 0 ? signedTokensRef.current.join(' + ') : 'ISL');
 
-    if (finalSentence && finalSentence.trim()) {
-      handleAgentSpeak(finalSentence.trim(), finalGesture);
+    if (finalSentence) {
+      handleAgentSpeak(finalSentence, finalGesture);
+      composedSentenceRef.current = '';
       setComposedSentence('');
       setSignedTokens([]);
       signedTokensRef.current = [];
@@ -751,6 +969,8 @@ export default function CallCenterPage() {
     if (autoSpeakTimerRef.current) clearTimeout(autoSpeakTimerRef.current);
     if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     setAutoSpeakCountdown(null);
+    composeRequestIdRef.current++;
+    composedSentenceRef.current = '';
     setComposedSentence('');
     setSignedTokens([]);
     signedTokensRef.current = [];
@@ -897,13 +1117,37 @@ export default function CallCenterPage() {
     }
 
     // 2. If agent signs "YES" (Thumbs up) while a sentence is already formed, trigger speak immediately!
-    if ((upperToken.includes('YES') || upperToken.includes('OK')) && composedSentence) {
-      commitAndSpeakSentence();
+    const pendingText = composedSentenceRef.current || composedSentence;
+    if ((upperToken.includes('YES') || upperToken.includes('OK')) && pendingText) {
+      commitAndSpeakSentence(pendingText);
       return;
     }
 
-    // 3. Accumulate signed tokens (keep up to 3 recent tokens)
-    const newTokens = [...signedTokensRef.current.slice(-2), upperToken];
+    // 3. Smart Token Accumulation:
+    const lastToken = signedTokensRef.current[signedTokensRef.current.length - 1];
+    let newTokens: string[];
+
+    if (!lastToken) {
+      newTokens = [upperToken];
+    } else if (lastToken === upperToken) {
+      // Avoid duplicate consecutive accumulation (e.g. continuous frames sending WAIT + WAIT or PERFECT + PERFECT)
+      newTokens = [...signedTokensRef.current];
+    } else {
+      // Check if they form a recognized multi-sign compound (e.g. HELLO + HOW, FOOD + TIME, YES + THANK, PLEASE + HELP)
+      const isKnownCombo =
+        (lastToken === 'HELLO' && (upperToken === 'HOW' || upperToken === 'YOU')) ||
+        (lastToken === 'FOOD' && upperToken === 'TIME') ||
+        (lastToken === 'YES' && upperToken === 'THANK') ||
+        (lastToken === 'PLEASE' && upperToken === 'HELP');
+
+      if (isKnownCombo) {
+        newTokens = [...signedTokensRef.current.slice(-1), upperToken];
+      } else {
+        // Disjoint / complete new sign (like PERFECT after WAIT, or HELLO after WAIT): replace buffer with new gesture!
+        newTokens = [upperToken];
+      }
+    }
+
     signedTokensRef.current = newTokens;
     setSignedTokens(newTokens);
 
@@ -912,12 +1156,15 @@ export default function CallCenterPage() {
     const lastCaller = callerMessages.length > 0 ? callerMessages[callerMessages.length - 1].text : '';
     const scenarioId = PRESET_SCENARIOS[currentScenarioIndexRef.current].id;
     const step = scenarioStepRef.current;
+    const isRealCall = activeCaller.name.includes('Caller') || (activeCaller.number && (activeCaller.number.startsWith('+') || activeCaller.number.startsWith('0')));
 
     // 5. Instantly provide initial NLP synthesis so UI has zero delay
-    const initialResult = composeContextualSentence(newTokens, scenarioId, step, lastCaller);
+    const initialResult = composeContextualSentence(newTokens, scenarioId, step, lastCaller, Boolean(isRealCall));
+    composedSentenceRef.current = initialResult.sentence;
     setComposedSentence(initialResult.sentence);
 
-    // 6. Asynchronously invoke selected AI Provider (Claude, Gemini, OpenAI, etc.)
+    // 6. Asynchronously invoke selected AI Provider with sequence protection
+    const currentRequestId = ++composeRequestIdRef.current;
     setIsComposingWithAi(true);
     fetch('/api/telephony/compose', {
       method: 'POST',
@@ -932,7 +1179,10 @@ export default function CallCenterPage() {
     })
       .then((res) => res.json())
       .then((data) => {
+        // Drop stale async responses if user signed another gesture or already spoke
+        if (composeRequestIdRef.current !== currentRequestId) return;
         if (data.sentence && data.sentence.trim()) {
+          composedSentenceRef.current = data.sentence.trim();
           setComposedSentence(data.sentence.trim());
           setComposerSource(data.model || 'Google Gemini 1.5');
         }
@@ -941,10 +1191,12 @@ export default function CallCenterPage() {
         console.warn('[AI Model] Call error, maintained local result:', err);
       })
       .finally(() => {
-        setIsComposingWithAi(false);
+        if (composeRequestIdRef.current === currentRequestId) {
+          setIsComposingWithAi(false);
+        }
       });
 
-    // 7. Handle auto-speak: Ultra-fast 700ms trigger matching the responsive meeting room speed
+    // 7. Handle auto-speak: 700ms trigger matching responsive meeting room speed
     if (autoSpeakTimerRef.current) clearTimeout(autoSpeakTimerRef.current);
     if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
 
@@ -953,7 +1205,7 @@ export default function CallCenterPage() {
 
       autoSpeakTimerRef.current = setTimeout(() => {
         setAutoSpeakCountdown(null);
-        commitAndSpeakSentence();
+        commitAndSpeakSentence(composedSentenceRef.current);
       }, 700);
     }
   };
@@ -1046,7 +1298,104 @@ export default function CallCenterPage() {
           </div>
         </section>
 
-        {/* Incoming Call Ringing Banner */}
+        {/* ─── Realistic Smartphone Full-Screen Incoming Call Overlay & Ringtone Music ─── */}
+        {callStatus === 'ringing' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+            <div 
+              className="relative w-full max-w-md bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border border-slate-700/80 rounded-3xl p-8 shadow-2xl text-white flex flex-col items-center text-center animate-in zoom-in-95 duration-200 overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Soft background ambient glow */}
+              <div className="absolute -top-24 -left-24 w-56 h-56 bg-orange-500/20 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-24 -right-24 w-56 h-56 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+
+              {/* Status Header Badge */}
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-800/90 border border-slate-700 text-orange-400 font-mono text-xs font-bold uppercase tracking-wider mb-6 shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-orange-500 animate-ping" />
+                <BellRing className="w-3.5 h-3.5 text-orange-400 animate-bounce" />
+                <span>Incoming Phone Call</span>
+              </div>
+
+              {/* Animated Concentric Ringing Phone Avatar */}
+              <div className="relative my-4 flex items-center justify-center">
+                {/* Ripple ring 1 */}
+                <div className="absolute w-36 h-36 rounded-full border-2 border-orange-500/30 animate-ping opacity-75" />
+                {/* Ripple ring 2 */}
+                <div className="absolute w-28 h-28 rounded-full border-2 border-emerald-500/40 animate-pulse" />
+                {/* Center Avatar */}
+                <div className="relative w-20 h-20 rounded-full bg-gradient-to-tr from-orange-500 to-amber-400 text-white flex items-center justify-center shadow-xl shadow-orange-500/30 z-10">
+                  <PhoneIncoming className="w-9 h-9 animate-bounce" />
+                </div>
+              </div>
+
+              {/* Caller Identity */}
+              <div className="space-y-1.5 my-3 z-10">
+                <h3 className="text-2xl font-black text-white tracking-tight">
+                  {activeCaller.name}
+                </h3>
+                <p className="text-base font-mono font-bold text-orange-400">
+                  {activeCaller.number}
+                </p>
+                <p className="text-xs text-slate-400">
+                  Exotel Telecom Gateway • Indian Sign Language Relay
+                </p>
+              </div>
+
+              {/* Animated Sound Wave / Music Playing Indicator */}
+              <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-800/80 border border-slate-700/80 my-4 text-xs font-mono text-slate-300">
+                <div className="flex items-end gap-1 h-4">
+                  <span className="w-1 bg-orange-400 rounded-full animate-[bounce_1s_infinite_100ms] h-3" />
+                  <span className="w-1 bg-orange-400 rounded-full animate-[bounce_1s_infinite_300ms] h-4" />
+                  <span className="w-1 bg-orange-400 rounded-full animate-[bounce_1s_infinite_200ms] h-2" />
+                  <span className="w-1 bg-orange-400 rounded-full animate-[bounce_1s_infinite_400ms] h-3.5" />
+                </div>
+                <span>{isRingtoneMuted ? 'Ringtone Muted' : 'Phone Ringtone Playing'}</span>
+                <button
+                  type="button"
+                  onClick={() => setIsRingtoneMuted(!isRingtoneMuted)}
+                  className="ml-2 p-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition cursor-pointer"
+                  title={isRingtoneMuted ? 'Unmute Ringtone' : 'Mute Ringtone'}
+                >
+                  {isRingtoneMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
+                </button>
+              </div>
+
+              {/* Real Phone Call Action Buttons */}
+              <div className="grid grid-cols-2 gap-6 w-full pt-4 z-10">
+                {/* Decline Button */}
+                <button
+                  type="button"
+                  onClick={handleEndCall}
+                  className="flex flex-col items-center gap-2 group cursor-pointer"
+                >
+                  <div className="w-16 h-16 rounded-full bg-rose-600 group-hover:bg-rose-700 text-white flex items-center justify-center shadow-lg shadow-rose-600/30 transition transform active:scale-95">
+                    <PhoneOff className="w-7 h-7" />
+                  </div>
+                  <span className="text-xs font-heading font-bold text-slate-400 group-hover:text-rose-400 transition">
+                    Decline
+                  </span>
+                </button>
+
+                {/* Accept Call Button */}
+                <button
+                  type="button"
+                  onClick={handleAnswerCall}
+                  className="flex flex-col items-center gap-2 group cursor-pointer"
+                >
+                  <div className="w-16 h-16 rounded-full bg-emerald-600 group-hover:bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-600/40 transition transform active:scale-95 animate-pulse">
+                    <PhoneCall className="w-7 h-7" />
+                  </div>
+                  <span className="text-xs font-heading font-bold text-emerald-400 group-hover:text-emerald-300 transition">
+                    Accept Call
+                  </span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* Incoming Call Ringing Inline Banner */}
         {callStatus === 'ringing' && (
           <div className="bg-gradient-to-r from-orange-50 via-white to-amber-50 border-2 border-orange-400 rounded-3xl p-6 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center gap-4">
@@ -1054,10 +1403,16 @@ export default function CallCenterPage() {
                 <PhoneIncoming className="w-7 h-7" />
               </div>
               <div>
-                <span className="text-[11px] uppercase tracking-wider font-extrabold text-orange-600">
-                  Incoming Telecom Call
-                </span>
-                <h3 className="text-xl font-black text-slate-900">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] uppercase tracking-wider font-extrabold text-orange-600">
+                    Incoming Telecom Call
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[10px] font-mono font-bold flex items-center gap-1">
+                    <BellRing className="w-3 h-3 text-orange-600 animate-spin" />
+                    Ringing...
+                  </span>
+                </div>
+                <h3 className="text-xl font-black text-slate-900 mt-0.5">
                   {activeCaller.name} <span className="text-slate-500 text-sm font-normal">({activeCaller.number})</span>
                 </h3>
                 <p className="text-xs text-slate-600 mt-0.5">
@@ -1075,7 +1430,7 @@ export default function CallCenterPage() {
               </button>
               <button
                 onClick={handleAnswerCall}
-                className="flex items-center gap-2 px-7 py-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-lg shadow-emerald-600/30 cursor-pointer"
+                className="flex items-center gap-2 px-7 py-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-lg shadow-emerald-600/30 cursor-pointer animate-pulse"
               >
                 <PhoneCall className="w-4 h-4" />
                 <span>Accept Call</span>
@@ -1517,7 +1872,7 @@ export default function CallCenterPage() {
                       </button>
 
                       <button
-                        onClick={() => commitAndSpeakSentence()}
+                        onClick={() => commitAndSpeakSentence(composedSentenceRef.current || composedSentence)}
                         disabled={callStatus !== 'connected'}
                         className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
                       >

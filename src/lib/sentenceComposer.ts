@@ -202,7 +202,8 @@ export function composeContextualSentence(
   tokens: string[],
   scenarioId: string = 'daily',
   dialogueStep: number = 0,
-  lastCallerMessage: string = ''
+  lastCallerMessage: string = '',
+  isRealCall: boolean = false
 ): ComposedSentenceResult {
   if (!tokens || tokens.length === 0) {
     return {
@@ -215,6 +216,9 @@ export function composeContextualSentence(
 
   const upperTokens = tokens.map((t) => t.toUpperCase().trim());
   const joinedTokens = upperTokens.join(' ');
+  const primaryToken = upperTokens[upperTokens.length - 1];
+  const callerLower = (lastCallerMessage || '').toLowerCase();
+  const isGreetingQuestion = callerLower.includes('how are you') || callerLower.includes('how about you') || callerLower.includes('doing');
 
   // 1. Check for Fingerspelled Words (SPELL:<word>)
   const spelledToken = upperTokens.find((t) => t.startsWith('SPELL:'));
@@ -250,7 +254,70 @@ export function composeContextualSentence(
     };
   }
 
-  // 2. Intelligent Multi-Sign Combinations (Sign-Driven Syntax)
+  // 2. High-Priority Semantic Sign Matching on the Latest Gesture (Primary Token)
+  // Ensures user's latest sign is never overridden by earlier lingering tokens
+  if (primaryToken === 'PERFECT') {
+    if (isGreetingQuestion) {
+      return {
+        sentence: "I am doing great and everything is wonderful today, thank you for asking!",
+        source: 'contextual-template',
+        intent: 'PERFECT_GREETING',
+        confidence: 0.99,
+      };
+    }
+    return {
+      sentence: "That is absolutely perfect, thank you so much!",
+      source: 'contextual-template',
+      intent: 'PERFECT',
+      confidence: 0.99,
+    };
+  }
+
+  if (primaryToken === 'WAIT') {
+    return {
+      sentence: "Please wait for just a moment, I will be right back with you.",
+      source: 'contextual-template',
+      intent: 'WAIT',
+      confidence: 0.99,
+    };
+  }
+
+  if (primaryToken === 'HELLO' || primaryToken === 'HI') {
+    if (isGreetingQuestion) {
+      return {
+        sentence: "Hello! Good to see you. I am doing great today, how about you?",
+        source: 'contextual-template',
+        intent: 'HELLO_GREETING',
+        confidence: 0.99,
+      };
+    }
+    return {
+      sentence: "Hello! Good to see you. How are you doing today?",
+      source: 'contextual-template',
+      intent: 'HELLO',
+      confidence: 0.99,
+    };
+  }
+
+  if (primaryToken === 'PLEASE') {
+    return {
+      sentence: "Could you please help me with that whenever you have time?",
+      source: 'contextual-template',
+      intent: 'PLEASE',
+      confidence: 0.98,
+    };
+  }
+
+  if (primaryToken === 'THANK') {
+    return {
+      sentence: "Thank you so much! I really appreciate your support.",
+      source: 'contextual-template',
+      intent: 'THANK',
+      confidence: 0.99,
+    };
+  }
+
+  // 3. Intelligent Multi-Sign Combinations (Sign-Driven Syntax)
   if (joinedTokens.includes('HELLO') && (joinedTokens.includes('HOW') || joinedTokens.includes('YOU'))) {
     return {
       sentence: "Hello! How are you doing today? Great to see you!",
@@ -305,13 +372,11 @@ export function composeContextualSentence(
     };
   }
 
-  // 3. Prioritize Most Recent Confirmed Token (from right to left)
-  // If this is a real phone call with caller context, prioritize true semantic translation over scripted demo steps
-  const isRealPhoneCall = Boolean(lastCallerMessage && lastCallerMessage.trim().length > 0);
-  const primaryToken = upperTokens[upperTokens.length - 1];
+  // 4. Prioritize Most Recent Confirmed Token (from right to left)
+  const isRealPhoneCall = isRealCall || Boolean(lastCallerMessage && lastCallerMessage.trim().length > 0);
   const domain = CONTEXT_KNOWLEDGE_GRAPH[scenarioId] || CONTEXT_KNOWLEDGE_GRAPH['daily'];
 
-  // Only apply scripted scenario steps if this is an explicitly simulated demo with NO real caller message
+  // Only apply scripted scenario steps if this is an explicitly simulated demo with NO real caller
   if (!isRealPhoneCall && domain[dialogueStep]) {
     const stepRules = domain[dialogueStep];
     // Check primary (most recent) token first for exact match
@@ -325,20 +390,21 @@ export function composeContextualSentence(
         };
       }
     }
-    // Then check full tokens
-    for (const [key, sentence] of Object.entries(stepRules)) {
-      if (upperTokens.includes(key)) {
+    // Then check full tokens in reverse order
+    for (let i = upperTokens.length - 1; i >= 0; i--) {
+      const tok = upperTokens[i];
+      if (stepRules[tok]) {
         return {
-          sentence,
+          sentence: stepRules[tok],
           source: 'contextual-template',
-          intent: key,
+          intent: tok,
           confidence: 0.95,
         };
       }
     }
   }
 
-  // 4. Semantic Gestures Dictionary (Exact matches prioritized)
+  // 5. Semantic Gestures Dictionary (Exact matches prioritized)
   // Check exact match for primary (most recent) token first
   for (const [key, sentence] of Object.entries(domain.defaultTokenMap)) {
     if (primaryToken === key) {
@@ -378,7 +444,7 @@ export function composeContextualSentence(
     }
   }
 
-  // 5. Universal Polite Verbalization
+  // 6. Universal Polite Verbalization
   return {
     sentence: `Yes, ${tokens.join(' ').toLowerCase()}. Let me assist you with that right away.`,
     source: 'direct',

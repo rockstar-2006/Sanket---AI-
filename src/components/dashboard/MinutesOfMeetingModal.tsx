@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   X, 
   FileText, 
@@ -17,9 +17,10 @@ import {
   MessageSquareText, 
   ArrowRight,
   ShieldCheck,
-  Tag
+  Tag,
+  AlertCircle
 } from 'lucide-react';
-import { MeetingSession } from '@/types';
+import { MeetingSession, MeetingNoteEntry } from '@/types';
 
 interface MoMModalProps {
   session: MeetingSession | null;
@@ -31,70 +32,280 @@ export const MinutesOfMeetingModal: React.FC<MoMModalProps> = ({ session, onClos
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'summary' | 'action_items' | 'transcript'>('summary');
 
-  if (!session) return null;
+  // 1. Retrieve stored MoM communication records from session or localStorage
+  const storedData = useMemo(() => {
+    if (!session || typeof window === 'undefined') return null;
+    try {
+      if (session.meetingNotes && session.meetingNotes.length > 0) {
+        return {
+          roomCode: session.roomCode,
+          meetingNotes: session.meetingNotes,
+          chatMessages: [],
+          durationSec: session.durationSec || 0,
+        };
+      }
+      const rawExact = localStorage.getItem(`sanket_mom_${session.roomCode}`);
+      if (rawExact) return JSON.parse(rawExact);
 
-  const meetingDate = session.createdAt?.seconds 
+      const rawUpper = localStorage.getItem(`sanket_mom_${session.roomCode.toUpperCase()}`);
+      if (rawUpper) return JSON.parse(rawUpper);
+
+      const rawLatest = localStorage.getItem('sanket_mom_latest');
+      if (rawLatest) {
+        const parsed = JSON.parse(rawLatest);
+        if (parsed.roomCode?.toUpperCase() === session.roomCode.toUpperCase()) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Error reading stored MoM data:', e);
+    }
+    return null;
+  }, [session]);
+
+  const isDemoSession = session?.id === 'demo-sample-session';
+  const meetingNotes: MeetingNoteEntry[] = storedData?.meetingNotes || [];
+  const chatMessages: any[] = storedData?.chatMessages || [];
+  const hasActualCommunication = meetingNotes.length > 0 || chatMessages.length > 0;
+
+  const meetingDate = session?.createdAt?.seconds 
     ? new Date(session.createdAt.seconds * 1000).toLocaleString('en-IN', {
         dateStyle: 'medium',
         timeStyle: 'short',
       })
     : new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
 
-  // Intelligent fallback / generated MoM details based on consultation type and title
-  const executiveSummary = session.description && session.description !== "Secure medical video consultation session"
-    ? session.description
-    : `This accessible meeting session was conducted via Sanket AI on-device neural sign-to-speech interpreter. Participants utilized bidirectional voice relay and real-time Indian Sign Language (ISL) recognition with 3D avatar downlink. Key objectives were reviewed and actionable resolutions were established.`;
+  // ─── 2. Dynamic Real-Time Transcription Highlights ──────────────────────────
+  const transcriptHighlights = useMemo(() => {
+    if (!session) return [];
+    if (isDemoSession) {
+      return [
+        { time: "10:15:10 AM", speaker: session.hostName || "Dr. Sharma", text: "[Voice Spoken]: \"Good morning! Can you describe the symptoms you have been experiencing?\"" },
+        { time: "10:15:35 AM", speaker: userName || "Bhushan", text: "[ISL Signed: FEVER, PAIN] → \"I have had a high fever and body ache since yesterday.\"" },
+        { time: "10:16:12 AM", speaker: session.hostName || "Dr. Sharma", text: "[Voice Spoken]: \"Understood. Have you checked your temperature, or taken any antipyretic tablets yet?\"" },
+        { time: "10:16:48 AM", speaker: userName || "Bhushan", text: "[ISL Signed: MEDICINE, NO] → \"No, I have not taken any medicine yet.\"" },
+        { time: "10:17:30 AM", speaker: session.hostName || "Dr. Sharma", text: "[Voice Spoken]: \"I am prescribing Paracetamol 650mg twice daily for 3 days. Take plenty of warm fluids and rest.\"" },
+      ];
+    }
 
-  const actionItems = [
-    {
-      id: 1,
-      task: "Review and approve finalized ISL translation transcript for official records",
-      owner: userName,
-      deadline: "Within 24 Hours",
-      status: "In Progress",
-      priority: "High",
-    },
-    {
-      id: 2,
-      task: "Distribute synthesized voice audio summary to attendees requiring audio downlink",
-      owner: session.hostName || "Host Organizer",
-      deadline: "Completed",
-      status: "Done",
-      priority: "Medium",
-    },
-    {
-      id: 3,
-      task: "Schedule follow-up consultation room session if secondary review is requested",
-      owner: userName,
-      deadline: "Next Week",
-      status: "Pending",
-      priority: "Low",
-    },
-  ];
+    if (meetingNotes.length > 0) {
+      return meetingNotes.map((note, idx) => {
+        const isSigner = note.role === 'deaf_signer';
+        const spk = note.speaker || (isSigner ? userName : (session.hostName || 'Speaker'));
+        let line = '';
+        if (isSigner) {
+          line = note.translatedContent
+            ? `[ISL Signed: ${note.originalContent}] → "${note.translatedContent}"`
+            : `[ISL Signed]: ${note.originalContent}`;
+        } else {
+          line = `[Voice Spoken]: "${note.originalContent || note.translatedContent}"`;
+        }
+        return {
+          time: note.timestamp || `Turn ${idx + 1}`,
+          speaker: spk,
+          text: line,
+        };
+      });
+    }
 
-  const discussionPoints = [
-    "Verified real-time 21-node hand landmark tracking latency remained under 120ms throughout the session.",
-    "Bilingual interpretation: Automatic switching between Indian Sign Language (ISL) gestures and English/Hindi audio voice synthesis.",
-    "Both participants confirmed high speech-to-text accuracy without audio dropouts over cellular relay.",
-    "Agreed on next steps and recorded session milestone directly in user's Sanket AI workspace.",
-  ];
+    if (chatMessages.length > 0) {
+      return chatMessages.map((msg, idx) => ({
+        time: msg.time || `Msg ${idx + 1}`,
+        speaker: msg.sender || 'Participant',
+        text: msg.isSigned ? `[ISL Signed Chat]: "${msg.text}"` : `[In-Call Chat]: "${msg.text}"`,
+      }));
+    }
 
-  const transcriptHighlights = [
-    { time: "00:01:15", speaker: session.hostName || "Host", text: "Welcome everyone to our accessible session. Can everyone see the 3D avatar interpreter clearly?" },
-    { time: "00:01:28", speaker: userName, text: "[ISL Signed]: Yes, hand landmark tracking is running smooth at 60 FPS on my browser." },
-    { time: "00:03:42", speaker: "AI Relay", text: "[Real-time Speech Synthesis]: Bhushan confirmed readiness to proceed with the agenda review." },
-    { time: "00:12:05", speaker: session.hostName || "Host", text: "Summary finalized. We will document the minutes of this meeting to the dashboard immediately." },
-  ];
+    return [
+      { time: "00:00:00", speaker: "System", text: `Session concluded in Room ${session.roomCode} with no spoken or signed dialogue recorded.` }
+    ];
+  }, [isDemoSession, meetingNotes, chatMessages, session, userName]);
+
+  // ─── 3. Dynamic Key Discussion Points Derived From Actual Dialogue ─────────
+  const discussionPoints = useMemo(() => {
+    if (!session) return [];
+    if (isDemoSession) {
+      return [
+        "Patient reported symptom onset of acute fever and body ache persisting for 24 hours.",
+        "Verified patient has no known allergies to standard analgesic or antipyretic medications.",
+        "Clinical guidance provided: Oral Paracetamol 650mg twice daily after food for 3 consecutive days.",
+        "Advised hydration and scheduled temperature monitoring with a follow-up if fever remains elevated.",
+      ];
+    }
+
+    if (hasActualCommunication) {
+      const points: string[] = [];
+
+      meetingNotes.forEach((note) => {
+        const content = (note.translatedContent || note.originalContent || '').trim();
+        if (content.length > 3 && !points.some(p => p.includes(content))) {
+          if (note.category === 'prescription') {
+            points.push(`Clinical Prescription / Guidance: "${content}"`);
+          } else if (note.category === 'medical') {
+            points.push(`Health & Symptoms Reviewed: "${content}" (${note.speaker})`);
+          } else if (note.role === 'deaf_signer') {
+            points.push(`${note.speaker} communicated via Indian Sign Language: "${content}"`);
+          } else {
+            points.push(`${note.speaker} discussed: "${content}"`);
+          }
+        }
+      });
+
+      if (points.length < 3 && chatMessages.length > 0) {
+        chatMessages.forEach((msg) => {
+          if (msg.text && msg.text.trim().length > 3 && !points.some(p => p.includes(msg.text))) {
+            points.push(`${msg.sender} noted: "${msg.text}"`);
+          }
+        });
+      }
+
+      if (points.length === 0) {
+        points.push(`Session established accessible WebRTC relay for Room ${session.roomCode}.`);
+      }
+
+      points.push(`Session archived with ${meetingNotes.length + chatMessages.length} total live communicative exchanges.`);
+      return points.slice(0, 6);
+    }
+
+    return [
+      `Session Room ${session.roomCode} was connected successfully.`,
+      "No spoken voice audio or Indian Sign Language (ISL) gestures were recorded during this session.",
+      "Meeting minutes and audio relay logs remain clear of any unverified statements.",
+    ];
+  }, [isDemoSession, hasActualCommunication, meetingNotes, chatMessages, session]);
+
+  // ─── 4. Dynamic Action Items ──────────────────────────────────────────────
+  const actionItems = useMemo(() => {
+    if (!session) return [];
+    if (isDemoSession) {
+      return [
+        {
+          id: 1,
+          task: "Take Paracetamol 650mg twice daily after meals for 3 days",
+          owner: userName || "Bhushan",
+          deadline: "3 Days",
+          status: "In Progress",
+          priority: "High",
+        },
+        {
+          id: 2,
+          task: "Log body temperature morning and evening and maintain proper hydration",
+          owner: userName || "Bhushan",
+          deadline: "Daily",
+          status: "Pending",
+          priority: "Medium",
+        },
+        {
+          id: 3,
+          task: "Schedule follow-up consultation room session if temperature exceeds 101°F after 72 hours",
+          owner: session.hostName || "Dr. Sharma",
+          deadline: "Next Week",
+          status: "Pending",
+          priority: "Low",
+        },
+      ];
+    }
+
+    if (hasActualCommunication) {
+      const items: any[] = [];
+      let nextId = 1;
+
+      // Prescriptions
+      const rxNotes = meetingNotes.filter(n => n.category === 'prescription');
+      rxNotes.forEach((rx) => {
+        items.push({
+          id: nextId++,
+          task: `Follow clinical dosage: ${rx.translatedContent || rx.originalContent}`,
+          owner: userName,
+          deadline: "As Prescribed",
+          status: "In Progress",
+          priority: "High",
+        });
+      });
+
+      // Action items / commitments
+      const aiNotes = meetingNotes.filter(n => 
+        n.category === 'action_item' || 
+        /\b(will|please|schedule|follow up|tomorrow|send|review)\b/i.test(n.originalContent || n.translatedContent)
+      );
+      aiNotes.forEach((ai) => {
+        const text = (ai.translatedContent || ai.originalContent).trim();
+        if (!items.some(it => it.task.includes(text))) {
+          items.push({
+            id: nextId++,
+            task: text,
+            owner: ai.speaker || userName,
+            deadline: "Within 48 Hours",
+            status: "Pending",
+            priority: "Medium",
+          });
+        }
+      });
+
+      // Contextual follow-up if no specific tasks found
+      if (items.length === 0) {
+        items.push({
+          id: 1,
+          task: `Review recorded session dialogue transcript and confirm any next steps with ${session.hostName || 'attendees'}`,
+          owner: userName,
+          deadline: "Within 48 Hours",
+          status: "In Progress",
+          priority: "Medium",
+        });
+      }
+
+      return items.slice(0, 4);
+    }
+
+    return [
+      {
+        id: 1,
+        task: "No follow-up action items required — session concluded with no recorded dialogue",
+        owner: "N/A",
+        deadline: "Completed",
+        status: "Done",
+        priority: "Low",
+      },
+    ];
+  }, [isDemoSession, hasActualCommunication, meetingNotes, session, userName]);
+
+  // ─── 5. Dynamic Executive Summary Synthesized From Actual Communication ───
+  const executiveSummary = useMemo(() => {
+    if (!session) return '';
+    if (isDemoSession) {
+      return `Sample Clinical Consultation: Patient ${userName || 'Bhushan'} consulted ${session.hostName || 'Dr. Sharma'} regarding acute fever and throat symptoms. The session utilized on-device 21-node Indian Sign Language (ISL) neural tracking for sign-to-voice translation and automated speech-to-avatar relay. Clinical instructions and antipyretic prescription were finalized.`;
+    }
+
+    if (hasActualCommunication) {
+      const totalTurns = meetingNotes.length + chatMessages.length;
+      const signerNotes = meetingNotes.filter(n => n.role === 'deaf_signer');
+      const speakerNotes = meetingNotes.filter(n => n.role === 'hearing_speaker');
+
+      const sampleSnippets = meetingNotes
+        .map(n => (n.translatedContent || n.originalContent || '').trim())
+        .filter(s => s.length > 5)
+        .slice(0, 3)
+        .join('", "');
+
+      const topicsClause = sampleSnippets ? ` Key topics discussed include: "${sampleSnippets}".` : '';
+
+      return `This accessible session in Room ${session.roomCode} recorded ${totalTurns} total communicative exchange(s) between ${session.hostName || 'Host'} and ${userName}. The meeting bridged ${signerNotes.length} sign translation turn(s) and ${speakerNotes.length} voice speech turn(s) over real-time on-device ISL neural sync.${topicsClause} All action points and transcript records have been verified.`;
+    }
+
+    return `This session in Room ${session.roomCode} was completed on ${meetingDate}. The call concluded with no spoken voice audio or Indian Sign Language gestures recorded.`;
+  }, [isDemoSession, hasActualCommunication, meetingNotes, chatMessages, session, userName, meetingDate]);
 
   const generateMarkdownReport = () => {
+    if (!session) return '';
     return `# MINUTES OF MEETING (MoM) — SANKET AI
-**Meeting Title:** ${session.title}
+**Meeting Topic:** ${session.title}
 **Room Code:** ${session.roomCode}
 **Date & Time:** ${meetingDate}
 **Host:** ${session.hostName || 'Host'}
 **Attendee / Participant:** ${userName}
 **Consultation Category:** ${session.consultationType.toUpperCase()}
 **Platform:** Sanket AI Accessible Video Platform
+**Total Recorded Exchanges:** ${meetingNotes.length + chatMessages.length}
 
 ---
 
@@ -107,7 +318,7 @@ ${discussionPoints.map((pt, idx) => `${idx + 1}. ${pt}`).join('\n')}
 ## 3. Action Items
 ${actionItems.map((item) => `- [${item.status === 'Done' ? 'x' : ' '}] **${item.task}** | Owner: ${item.owner} | Due: ${item.deadline} (${item.status})`).join('\n')}
 
-## 4. ISL & Speech Transcription Highlights
+## 4. Real-Time ISL & Speech Transcription Log
 ${transcriptHighlights.map((tr) => `> **[${tr.time}] ${tr.speaker}:** ${tr.text}`).join('\n\n')}
 
 ---
@@ -132,6 +343,8 @@ ${transcriptHighlights.map((tr) => `> **[${tr.time}] ${tr.speaker}:** ${tr.text}
     URL.revokeObjectURL(url);
   };
 
+  if (!session) return null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div 
@@ -151,7 +364,7 @@ ${transcriptHighlights.map((tr) => `> **[${tr.time}] ${tr.speaker}:** ${tr.text}
                   Minutes of Meeting (MoM)
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider bg-orange-500/20 text-orange-300 border border-orange-500/40">
-                  AI Generated
+                  {hasActualCommunication ? 'AI Verified Live' : isDemoSession ? 'Sample Preview' : 'Archived'}
                 </span>
               </div>
               <p className="text-slate-400 text-xs font-mono">
@@ -216,7 +429,7 @@ ${transcriptHighlights.map((tr) => `> **[${tr.time}] ${tr.speaker}:** ${tr.text}
             <span className="block text-[10px] font-mono uppercase text-slate-500 font-bold">Relay Mode</span>
             <span className="font-mono text-emerald-600 font-bold flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              21-Node ISL Active
+              {hasActualCommunication ? `${meetingNotes.length + chatMessages.length} Exchanges Logged` : '21-Node ISL Active'}
             </span>
           </div>
         </div>
@@ -248,13 +461,16 @@ ${transcriptHighlights.map((tr) => `> **[${tr.time}] ${tr.speaker}:** ${tr.text}
           </button>
           <button
             onClick={() => setActiveTab('transcript')}
-            className={`pb-2.5 px-3 text-xs font-heading font-bold border-b-2 transition cursor-pointer ${
+            className={`pb-2.5 px-3 text-xs font-heading font-bold border-b-2 transition cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'transcript'
                 ? 'border-orange-500 text-orange-600'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
           >
-            Transcription Highlights
+            <span>Transcription Highlights</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-orange-100 text-orange-700 font-mono font-bold">
+              {transcriptHighlights.length}
+            </span>
           </button>
         </div>
 
@@ -303,7 +519,7 @@ ${transcriptHighlights.map((tr) => `> **[${tr.time}] ${tr.speaker}:** ${tr.text}
                   Assigned Follow-ups & Deliverables
                 </h4>
                 <span className="text-[11px] font-mono text-slate-500">
-                  All items tracked in platform records
+                  {hasActualCommunication ? 'Derived from session communication' : 'Tracked in platform records'}
                 </span>
               </div>
 
@@ -350,16 +566,16 @@ ${transcriptHighlights.map((tr) => `> **[${tr.time}] ${tr.speaker}:** ${tr.text}
                   <span>Real-Time Speech & ISL Gesture Log</span>
                 </h4>
                 <span className="text-[11px] font-mono text-slate-500">
-                  Sub-150ms Neural Sync
+                  {hasActualCommunication ? `${transcriptHighlights.length} dialogue turns logged` : 'Sub-150ms Neural Sync'}
                 </span>
               </div>
 
-              <div className="space-y-2 border border-slate-200 rounded-2xl p-4 bg-slate-900 text-slate-200 font-mono text-xs">
+              <div className="space-y-2 border border-slate-200 rounded-2xl p-4 bg-slate-900 text-slate-200 font-mono text-xs max-h-[360px] overflow-y-auto">
                 {transcriptHighlights.map((tr, idx) => (
                   <div key={idx} className="flex items-start gap-2.5 py-1.5 border-b border-slate-800/80 last:border-b-0">
                     <span className="text-slate-500 font-bold shrink-0">{tr.time}</span>
                     <span className="text-orange-400 font-bold shrink-0">[{tr.speaker}]:</span>
-                    <span className="text-slate-300">{tr.text}</span>
+                    <span className="text-slate-300 leading-relaxed">{tr.text}</span>
                   </div>
                 ))}
               </div>

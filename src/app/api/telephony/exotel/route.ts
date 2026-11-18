@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
 
     const callSid = searchParams.get('CallSid') || searchParams.get('call_sid');
     const from = searchParams.get('From') || searchParams.get('from') || 'Unknown';
-    const to = searchParams.get('To') || searchParams.get('to') || process.env.EXOTEL_PHONE_NUMBER || '';
+    const to = searchParams.get('To') || searchParams.get('to') || (globalThis as any).exotelRuntimeConfig?.callerId || process.env.EXOTEL_PHONE_NUMBER || '';
 
     if (callSid) {
       globalThis.activeExotelCall = {
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       status: 'success',
       service: 'Sanket AI Exotel Telephony Gateway',
-      accountSid: process.env.EXOTEL_ACCOUNT_SID || '',
+      accountSid: (globalThis as any).exotelRuntimeConfig?.accountSid || process.env.EXOTEL_ACCOUNT_SID || '',
       virtualExoPhone: to,
       activeCall: globalThis.activeExotelCall || null,
       appletResponse: {
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
     globalThis.activeExotelCall = {
       callSid: CallSid || `EXO-${Date.now()}`,
       from: callerId,
-      to: To || process.env.EXOTEL_PHONE_NUMBER || '',
+      to: To || (globalThis as any).exotelRuntimeConfig?.callerId || process.env.EXOTEL_PHONE_NUMBER || '',
       timestamp: new Date().toISOString(),
       status: 'ringing',
       latestSpeech: callerSpeech || undefined,

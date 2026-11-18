@@ -84,7 +84,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Fast local NLP fallback (guaranteed safe instant sentence)
-    const localResult = composeContextualSentence(tokens, scenarioId, dialogueStep, callerMessage);
+    const isRealCall = Boolean(callerMessage || scenarioId === 'real');
+    const localResult = composeContextualSentence(tokens, scenarioId, dialogueStep, callerMessage, isRealCall);
 
     // 2. Prepare System Prompt & Sign Sequence
     const cleanedTokens = tokens.map((t: string) => {

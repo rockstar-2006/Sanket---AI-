@@ -13,6 +13,17 @@ export interface UserProfile {
 
 export type ConsultationType = 'urgent' | 'specialist' | 'general' | 'followup';
 
+export interface MeetingNoteEntry {
+  id: string;
+  timestamp: string;
+  speaker: string;
+  role: 'hearing_speaker' | 'deaf_signer';
+  sourceType: 'speech' | 'sign' | 'fingerspell';
+  originalContent: string;
+  translatedContent: string;
+  category?: 'general' | 'medical' | 'prescription' | 'action_item' | 'question';
+}
+
 export interface MeetingSession {
   id: string;
   title: string;
@@ -25,6 +36,11 @@ export interface MeetingSession {
   status: 'scheduled' | 'active' | 'ended';
   consultationType: ConsultationType;
   maxParticipants: number;
+  meetingNotes?: MeetingNoteEntry[];
+  summary?: string;
+  actionItems?: any[];
+  discussionPoints?: string[];
+  durationSec?: number;
 }
 
 export interface ParticipantState {

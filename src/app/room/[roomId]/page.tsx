@@ -24,8 +24,10 @@ import {
 import nextDynamic from 'next/dynamic';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '@/context/AuthContext';
+import { useWallet } from '@/context/WalletContext';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import { normalizeRoomCode } from '@/types';
+import { saveMeetingNotes, endMeetingSession } from '@/lib/firebase/services';
 import { SignEmoji3DViewer, SIGN_EMOJIS_LIST, SignEmojiDef } from '@/components/emojis/SignEmoji3DViewer';
 import {
   Video,
@@ -870,6 +872,9 @@ function MeetingRoomContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, profile } = useAuth();
+  const { credits, deductCredits, openRechargeModal } = useWallet();
+  const lastBilledMinuteRef = useRef<number>(0);
+  const meetingDurationRef = useRef<number>(0);
 
   const rawRoom = decodeURIComponent(String(params?.roomId || 'ROOM-DEMO'));
   const roomId = normalizeRoomCode(rawRoom) || 'ROOM-DEMO';
@@ -1446,6 +1451,37 @@ function MeetingRoomContent() {
   const [joinUrl, setJoinUrl] = useState('');
   const [clockTime, setClockTime] = useState<string>('');
 
+  // Active Meeting Duration & Real-Time Unified Credit Billing (10 credits per minute)
+  useEffect(() => {
+    if (!hasJoined) {
+      setMeetingDurationSec(0);
+      lastBilledMinuteRef.current = 0;
+      meetingDurationRef.current = 0;
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setMeetingDurationSec((prev) => {
+        const nextSec = prev + 1;
+        meetingDurationRef.current = nextSec;
+        const currentMinute = Math.floor(nextSec / 60);
+
+        // Deduct 10 credits at each completed 1-minute milestone (same unified rate as telecom relay)
+        if (currentMinute > lastBilledMinuteRef.current) {
+          lastBilledMinuteRef.current = currentMinute;
+          const hasCredits = deductCredits(10, `Accessible Video Meeting (${currentMinute} min active)`);
+          if (!hasCredits) {
+            setToastMessage('Credits depleted. Please top up your wallet to continue.');
+            openRechargeModal();
+          }
+        }
+        return nextSec;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [hasJoined, deductCredits, openRechargeModal]);
+
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -1533,6 +1569,26 @@ function MeetingRoomContent() {
     zoneState: 'no_hands',
   });
   const [meetingNotesLog, setMeetingNotesLog] = useState<MeetingNoteEntry[]>([]);
+
+  // Continuous persistence of meeting minutes / MoM ledger
+  useEffect(() => {
+    if (meetingNotesLog.length > 0 && typeof window !== 'undefined') {
+      try {
+        const payload = {
+          roomCode: roomId,
+          meetingNotes: meetingNotesLog,
+          chatMessages,
+          durationSec: meetingDurationSec,
+          savedAt: Date.now(),
+        };
+        localStorage.setItem(`sanket_mom_${roomId}`, JSON.stringify(payload));
+        localStorage.setItem(`sanket_mom_${roomId.toUpperCase()}`, JSON.stringify(payload));
+        localStorage.setItem('sanket_mom_latest', JSON.stringify(payload));
+      } catch (err) {
+        console.warn('Failed auto-saving meeting notes to localStorage:', err);
+      }
+    }
+  }, [meetingNotesLog, chatMessages, roomId, meetingDurationSec]);
   const [showMeetingNotesModal, setShowMeetingNotesModal] = useState<boolean>(false);
   const [showQrInviteModal, setShowQrInviteModal] = useState<boolean>(false);
   const [showSignGuideModal, setShowSignGuideModal] = useState<boolean>(false);
@@ -3787,6 +3843,15 @@ function MeetingRoomContent() {
 
   // ─── 16. Robust Meeting Exit (Leave Call) ─────────────────────────────────
   const handleLeaveMeeting = () => {
+    // Pro-rate partial minute block if active for >= 30s beyond last billed minute
+    const finalSec = meetingDurationRef.current;
+    const remainderSec = finalSec % 60;
+    if (finalSec >= 30 && remainderSec >= 30) {
+      deductCredits(5, 'Accessible Video Meeting (Partial 30s block)');
+    }
+    lastBilledMinuteRef.current = 0;
+    meetingDurationRef.current = 0;
+
     // 1. Terminate all hardware & virtual tracks immediately
     if (virtualStreamControllerRef.current) {
       virtualStreamControllerRef.current.stop();
@@ -3828,8 +3893,29 @@ function MeetingRoomContent() {
       } catch {}
     }
 
-    // 6. Navigate cleanly back to home
-    window.location.href = `/`;
+    // 6. Save MoM record to localStorage & Firebase
+    try {
+      if (typeof window !== 'undefined') {
+        const payload = {
+          roomCode: roomId,
+          meetingNotes: meetingNotesLog,
+          chatMessages,
+          durationSec: finalSec,
+          savedAt: Date.now(),
+        };
+        localStorage.setItem(`sanket_mom_${roomId}`, JSON.stringify(payload));
+        localStorage.setItem(`sanket_mom_${roomId.toUpperCase()}`, JSON.stringify(payload));
+        localStorage.setItem('sanket_mom_latest', JSON.stringify(payload));
+      }
+    } catch {}
+
+    try {
+      saveMeetingNotes(roomId, meetingNotesLog, { durationSec: finalSec }).catch(() => {});
+      endMeetingSession(roomId, { meetingNotes: meetingNotesLog, durationSec: finalSec }).catch(() => {});
+    } catch {}
+
+    // 7. Navigate cleanly back to dashboard
+    window.location.href = `/dashboard`;
   };
 
   const getJoinUrl = () => {
@@ -3888,6 +3974,11 @@ function MeetingRoomContent() {
   };
 
   const handleJoinMeeting = () => {
+    if (credits < 10) {
+      setToastMessage('Account balance low. Please recharge credits to join video meeting.');
+      openRechargeModal();
+      return;
+    }
     hasJoinedRef.current = true;
     setHasJoined(true);
     setActiveRole(selectedLobbyRole);
@@ -3994,6 +4085,15 @@ function MeetingRoomContent() {
           </Link>
 
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => openRechargeModal()}
+              className="text-xs font-mono text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-full border border-slate-200 flex items-center gap-1.5 transition cursor-pointer"
+              title="Click to recharge wallet"
+            >
+              <Zap className="w-3.5 h-3.5 text-orange-500" />
+              <span>Balance: <strong className="text-slate-900 font-bold">{credits} Cr</strong></span>
+            </button>
             <span className="text-xs font-mono text-slate-700 bg-slate-100 px-3.5 py-1.5 rounded-full border border-slate-200 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               Room: <strong className="text-slate-900 font-bold">{roomId}</strong>
@@ -6351,6 +6451,17 @@ function MeetingRoomContent() {
           <span className="text-sm font-medium text-slate-300 tracking-wide font-mono" suppressHydrationWarning>
             {roomId}
           </span>
+          <span className="text-slate-600 hidden sm:inline">|</span>
+          <button
+            type="button"
+            onClick={() => openRechargeModal()}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-200 border border-slate-700/80 transition cursor-pointer"
+            title="Wallet Balance — Click to recharge"
+          >
+            <Zap className="w-3 h-3 text-orange-400" />
+            <span className="font-bold text-white font-mono">{credits}</span>
+            <span className="text-slate-400 text-[10px]">Cr</span>
+          </button>
         </div>
 
         {/* Center: Primary In-Call Meeting Controls */}

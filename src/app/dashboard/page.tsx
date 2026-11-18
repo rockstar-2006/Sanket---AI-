@@ -410,7 +410,7 @@ export default function DashboardPage() {
               <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-600">
                 <span className="px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-1.5 font-mono">
                   <Clock className="w-3.5 h-3.5 text-orange-500" />
-                  ~{Math.round(credits / 10)} mins Telecom Voice Bridge
+                  ~{Math.round(credits / 10)} mins Video Meetings &amp; Voice Relay
                 </span>
                 <span className="px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-1.5 font-mono">
                   <Hand className="w-3.5 h-3.5 text-cyan-600" />
@@ -492,10 +492,10 @@ export default function DashboardPage() {
             <button
               onClick={() => setSelectedMoMSession({
                 id: 'demo-sample-session',
-                title: 'Accessible Project Review & ISL Telecom Relay Sync',
-                description: 'Review of sign-to-speech interpreter accuracy and team roadmap milestones.',
+                title: 'Accessible Clinical Consultation & ISL Relay Sync',
+                description: 'Clinical review of patient symptoms, antipyretic prescription, and ISL sign relay.',
                 hostUid: user.uid,
-                hostName: userName,
+                hostName: 'Dr. Sharma',
                 roomCode: 'SANKET-AI',
                 createdAt: { seconds: Math.floor(Date.now() / 1000) - 3600 },
                 status: 'ended',
@@ -528,10 +528,10 @@ export default function DashboardPage() {
                 <button
                   onClick={() => setSelectedMoMSession({
                     id: 'demo-sample-session',
-                    title: 'Accessible Project Review & ISL Telecom Relay Sync',
-                    description: 'Review of sign-to-speech interpreter accuracy and team roadmap milestones.',
+                    title: 'Accessible Clinical Consultation & ISL Relay Sync',
+                    description: 'Clinical review of patient symptoms, antipyretic prescription, and ISL sign relay.',
                     hostUid: user.uid,
-                    hostName: userName,
+                    hostName: 'Dr. Sharma',
                     roomCode: 'SANKET-AI',
                     createdAt: { seconds: Math.floor(Date.now() / 1000) - 3600 },
                     status: 'ended',

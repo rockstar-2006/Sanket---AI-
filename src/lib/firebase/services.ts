@@ -12,7 +12,7 @@ import {
   updateDoc
 } from "firebase/firestore";
 import { db } from "./config";
-import { UserProfile, MeetingSession, ChatMessage, UserRole } from "@/types";
+import { UserProfile, MeetingSession, ChatMessage, UserRole, MeetingNoteEntry } from "@/types";
 
 // Save or update user profile
 export async function createOrUpdateUserProfile(user: {
@@ -178,11 +178,49 @@ export function subscribeToChatMessages(roomId: string, callback: (messages: Cha
   };
 }
 
-// End meeting session
-export async function endMeetingSession(roomId: string) {
-  const docRef = doc(db, "meetings", roomId);
-  await updateDoc(docRef, {
-    status: 'ended',
-    endedAt: serverTimestamp(),
-  });
+// Save or update meeting notes and MoM summary
+export async function saveMeetingNotes(
+  idOrCode: string, 
+  notes: MeetingNoteEntry[], 
+  extra?: {
+    summary?: string;
+    actionItems?: any[];
+    discussionPoints?: any[];
+    durationSec?: number;
+  }
+) {
+  try {
+    const meetingId = (await resolveMeetingId(idOrCode)) || idOrCode;
+    const docRef = doc(db, "meetings", meetingId);
+    await updateDoc(docRef, {
+      meetingNotes: notes,
+      ...(extra || {}),
+    });
+  } catch (err) {
+    console.warn("Notice: could not persist meeting notes to Firestore doc:", err);
+  }
+}
+
+// End meeting session with optional final MoM notes
+export async function endMeetingSession(
+  roomId: string,
+  momData?: {
+    meetingNotes?: MeetingNoteEntry[];
+    summary?: string;
+    actionItems?: any[];
+    discussionPoints?: any[];
+    durationSec?: number;
+  }
+) {
+  try {
+    const meetingId = (await resolveMeetingId(roomId)) || roomId;
+    const docRef = doc(db, "meetings", meetingId);
+    await updateDoc(docRef, {
+      status: 'ended',
+      endedAt: serverTimestamp(),
+      ...(momData || {}),
+    });
+  } catch (err) {
+    console.warn("Notice: could not update endMeetingSession:", err);
+  }
 }
