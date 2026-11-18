@@ -1,6 +1,6 @@
 {
-  "name": "matri-telehealth-platform",
-  "version": "0.1.0",
+  "name": "sanket-ai",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "predev": "node -e \"const fs=require('fs'),p=require('path');const d=p.join('src','app','consultation','join','[roomCode]');if(fs.existsSync(d))fs.rmSync(d,{recursive:true,force:true});\" && node scripts/generate-pwa-icons.js",
@@ -41,12 +41,7 @@
     "typescript": "^5.7.3"
   },
   "devDependencies": {
-    "@gltf-transform/core": "^4.4.2",
-    "@gltf-transform/extensions": "^4.4.2",
-    "@gltf-transform/functions": "^4.4.2",
     "@types/express": "^5.0.0",
-    "concurrently": "^9.1.2",
-    "draco3d": "^1.5.7",
-    "gltf-pipeline": "^4.3.1"
+    "concurrently": "^9.1.2"
   }
 }

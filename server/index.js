@@ -899,9 +899,9 @@ nextApp.prepare().then(() => {
   });
 
   server.listen(port, hostname, () => {
-    console.log(`⚡ MATRI server running at http://${hostname}:${port} (${dev ? 'dev' : 'prod'})`);
+    console.log(`⚡ Sanket AI server running at http://${hostname}:${port} (${dev ? 'dev' : 'prod'})`);
   });
 }).catch((error) => {
-  console.error('Failed to start MATRI server:', error);
+  console.error('Failed to start Sanket AI server:', error);
   process.exit(1);
 });

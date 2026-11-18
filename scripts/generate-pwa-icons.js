@@ -1,12 +1,13 @@
 /**
- * Generates valid PNG icons for PWA compliance (192x192, 512x512, 180x180)
+ * Generates official Sanket AI PNG icons (192x192, 512x512, 180x180)
+ * Renders the new "Sanket Nexus" Monogram (Flowing "S" Ribbon + AI Nexus + Soundwaves)
  * Uses standard Node.js built-ins (zlib, fs, path) - Zero external dependencies!
  */
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-// CRC32 table for PNG chunk validation
+// CRC32 table for valid PNG chunk generation
 const crcTable = [];
 for (let n = 0; n < 256; n++) {
   let c = n;
@@ -37,22 +38,35 @@ function makeChunk(type, data) {
   return Buffer.concat([lenBuf, body, crcBuf]);
 }
 
-function generatePng(size) {
+function distToSegment(px, py, x1, y1, x2, y2) {
+  const l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+  if (l2 === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
+}
+
+function generateSanketIconPng(size) {
   const width = size;
   const height = size;
-  const rawBytesPerLine = 1 + width * 4; // 1 filter byte + RGBA
+  const rawBytesPerLine = 1 + width * 4;
   const rawData = Buffer.alloc(rawBytesPerLine * height);
-
-  // Colors
-  const bgR = 15, bgG = 23, bgB = 42; // #0f172a (Dark Slate)
-  const fgR = 249, fgG = 115, fgB = 22; // #f97316 (Orange Accent)
-  const cyR = 56, cyG = 189, cyB = 248; // #38bdf8 (Cyan Accent)
 
   const cx = width / 2;
   const cy = height / 2;
-  const radius = width * 0.44;
-  const camHalfW = width * 0.22;
-  const camHalfH = height * 0.16;
+  const cornerRadius = width * 0.24;
+
+  // Geometry parameters for the "S" Ribbon
+  const rTopCx = cx + width * 0.02;
+  const rTopCy = cy - height * 0.16;
+  const rTopRad = width * 0.22;
+
+  const rBotCx = cx - width * 0.02;
+  const rBotCy = cy + height * 0.16;
+  const rBotRad = width * 0.22;
+
+  const ribbonThickness = width * 0.115;
+  const halfRibbon = ribbonThickness / 2;
 
   for (let y = 0; y < height; y++) {
     const lineOffset = y * rawBytesPerLine;
@@ -62,25 +76,130 @@ function generatePng(size) {
       const pxOffset = lineOffset + 1 + x * 4;
       const dx = x - cx;
       const dy = y - cy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
 
-      let r = bgR, g = bgG, b = bgB, a = 255;
+      // Squircle distance check for rounded app icon
+      const ax = Math.abs(dx);
+      const ay = Math.abs(dy);
+      const limit = width / 2;
+      let inBounds = false;
 
-      // Rounded outer border ring
-      if (Math.abs(dist - radius) < (width * 0.02)) {
-        r = cyR; g = cyG; b = cyB; a = 220;
+      if (ax <= limit - cornerRadius && ay <= limit) {
+        inBounds = true;
+      } else if (ay <= limit - cornerRadius && ax <= limit) {
+        inBounds = true;
+      } else {
+        const cdx = ax - (limit - cornerRadius);
+        const cdy = ay - (limit - cornerRadius);
+        if (cdx * cdx + cdy * cdy <= cornerRadius * cornerRadius) {
+          inBounds = true;
+        }
       }
-      // Camera body rectangle in center
-      else if (Math.abs(dx + width * 0.05) < camHalfW && Math.abs(dy) < camHalfH) {
-        r = 30; g = 41; b = 59; // #1e293b
+
+      // Default transparent outside squircle
+      if (!inBounds) {
+        rawData[pxOffset] = 0;
+        rawData[pxOffset + 1] = 0;
+        rawData[pxOffset + 2] = 0;
+        rawData[pxOffset + 3] = 0;
+        continue;
       }
-      // Camera lens triangle / cone
-      else if (dx > width * 0.16 && dx < width * 0.32 && Math.abs(dy) < (dx - width * 0.14) * 0.9 && Math.abs(dy) < height * 0.15) {
-        r = fgR; g = fgG; b = fgB; // Orange lens
+
+      // ─── 1. Deep Space Navy Background Gradient (#0F172A to #020617) ───
+      const vGrad = y / height;
+      let r = Math.round(15 * (1 - vGrad) + 2 * vGrad);
+      let g = Math.round(23 * (1 - vGrad) + 6 * vGrad);
+      let b = Math.round(42 * (1 - vGrad) + 23 * vGrad);
+      let a = 255;
+
+      // Soft ambient radial glow in the center
+      const centerDist = Math.hypot(dx, dy);
+      if (centerDist < width * 0.42) {
+        const glowFactor = (1 - centerDist / (width * 0.42)) * 0.24;
+        r = Math.min(255, Math.round(r + 249 * glowFactor));
+        g = Math.min(255, Math.round(g + 115 * glowFactor));
+        b = Math.min(255, Math.round(b + 22 * glowFactor));
       }
-      // Hand silhouette center indicator
-      else if (Math.abs(dx + width * 0.05) < width * 0.09 && Math.abs(dy) < height * 0.09) {
-        r = 255; g = 255; b = 255; // White hand symbol
+
+      // ─── 2. Top Ribbon of 'S' (Solar Orange to Amber #FF7A00 -> #F97316) ───
+      const dTop = Math.abs(Math.hypot(x - rTopCx, y - rTopCy) - rTopRad);
+      const angleTop = Math.atan2(y - rTopCy, x - rTopCx); // -PI to PI
+      const isTopArc = (dTop <= halfRibbon) && (angleTop < 0.35 * Math.PI && angleTop > -1.15 * Math.PI);
+
+      if (isTopArc) {
+        const gradT = (angleTop + Math.PI) / (1.5 * Math.PI);
+        r = Math.round(255 * (1 - gradT) + 249 * gradT);
+        g = Math.round(122 * (1 - gradT) + 115 * gradT);
+        b = Math.round(0 * (1 - gradT) + 22 * gradT);
+      }
+
+      // ─── 3. Bottom Ribbon of 'S' (Amber to Sunset Orange #FBBF24 -> #EA580C) ───
+      const dBot = Math.abs(Math.hypot(x - rBotCx, y - rBotCy) - rBotRad);
+      const angleBot = Math.atan2(y - rBotCy, x - rBotCx);
+      const isBotArc = (dBot <= halfRibbon) && ((angleBot > -0.35 * Math.PI && angleBot < Math.PI) || angleBot < -0.85 * Math.PI);
+
+      if (isBotArc) {
+        const gradB = (angleBot + Math.PI / 2) / (1.5 * Math.PI);
+        r = Math.round(251 * (1 - gradB) + 234 * gradB);
+        g = Math.round(191 * (1 - gradB) + 88 * gradB);
+        b = Math.round(36 * (1 - gradB) + 12 * gradB);
+      }
+
+      // ─── 4. Diagonal Bridge Ribbon of 'S' ───
+      const bridgeDist = distToSegment(
+        x, y, 
+        cx - width * 0.16, cy - height * 0.05, 
+        cx + width * 0.16, cy + height * 0.05
+      );
+      if (bridgeDist <= halfRibbon) {
+        r = 249; g = 115; b = 22; // Vibrant Orange
+      }
+
+      // ─── 5. Audio Wave Frequencies on Right (3 Vertical Sound Bars) ───
+      const waveX = cx + width * 0.36;
+      const barW = width * 0.022;
+
+      // Bar 1
+      if (Math.abs(x - (waveX - barW * 2.2)) < barW / 2 && Math.abs(dy) < height * 0.07) {
+        r = 251; g = 191; b = 36;
+      }
+      // Bar 2 (Taller center bar)
+      else if (Math.abs(x - waveX) < barW / 2 && Math.abs(dy) < height * 0.13) {
+        r = 249; g = 115; b = 22;
+      }
+      // Bar 3
+      else if (Math.abs(x - (waveX + barW * 2.2)) < barW / 2 && Math.abs(dy) < height * 0.05) {
+        r = 251; g = 191; b = 36;
+      }
+
+      // ─── 6. ISL Gesture Landmark Nodes on Left (3 Cyan Tracking Dots) ───
+      const dotX = cx - width * 0.36;
+      const dot1Dist = Math.hypot(x - dotX, y - (cy - height * 0.09));
+      const dot2Dist = Math.hypot(x - (dotX - width * 0.03), y - cy);
+      const dot3Dist = Math.hypot(x - dotX, y - (cy + height * 0.09));
+
+      if (dot1Dist <= width * 0.02 || dot2Dist <= width * 0.026 || dot3Dist <= width * 0.02) {
+        r = 56; g = 189; b = 248; // Electric Cyan
+      }
+
+      // ─── 7. Center AI Translation Nexus ───
+      const nexusDist = Math.hypot(dx, dy);
+
+      // Cyan pulse halo
+      if (nexusDist < width * 0.095) {
+        const nexusGlow = (1 - nexusDist / (width * 0.095));
+        r = Math.round(r * (1 - nexusGlow) + 56 * nexusGlow);
+        g = Math.round(g * (1 - nexusGlow) + 189 * nexusGlow);
+        b = Math.round(b * (1 - nexusGlow) + 248 * nexusGlow);
+      }
+
+      // Bright white core diamond / star
+      if (Math.abs(dx) + Math.abs(dy) <= width * 0.046) {
+        r = 255; g = 255; b = 255; // Core White
+      }
+
+      // Electric cyan center spark
+      if (nexusDist <= width * 0.016) {
+        r = 6; g = 182; b = 212; // #06b6d4
       }
 
       rawData[pxOffset] = r;
@@ -108,15 +227,29 @@ function generatePng(size) {
   return Buffer.concat([signature, ihdrChunk, idatChunk, iendChunk]);
 }
 
-const outDir = path.join(__dirname, '..', 'public', 'icons');
-if (!fs.existsSync(outDir)) {
-  fs.mkdirSync(outDir, { recursive: true });
+const iconsDir = path.join(__dirname, '..', 'public', 'icons');
+const publicDir = path.join(__dirname, '..', 'public');
+
+if (!fs.existsSync(iconsDir)) {
+  fs.mkdirSync(iconsDir, { recursive: true });
 }
 
+// Generate PWA icons with the new Sanket AI Logo
 [180, 192, 512].forEach(size => {
   const fileName = size === 180 ? 'apple-touch-icon.png' : `icon-${size}x${size}.png`;
-  const filePath = path.join(outDir, fileName);
-  fs.writeFileSync(filePath, generatePng(size));
-  console.log(`Generated PWA icon: ${fileName} (${size}x${size})`);
+  const filePath = path.join(iconsDir, fileName);
+  const pngBuffer = generateSanketIconPng(size);
+  fs.writeFileSync(filePath, pngBuffer);
+  console.log(`Generated official Sanket PWA icon: ${fileName} (${size}x${size})`);
+
+  // Also write to public root for maximum compatibility with all browsers
+  if (size === 180) {
+    fs.writeFileSync(path.join(publicDir, 'apple-touch-icon.png'), pngBuffer);
+  } else if (size === 192) {
+    fs.writeFileSync(path.join(publicDir, 'icon-192x192.png'), pngBuffer);
+  } else if (size === 512) {
+    fs.writeFileSync(path.join(publicDir, 'icon-512x512.png'), pngBuffer);
+  }
 });
-console.log('✅ All PWA PNG icons generated successfully!');
+
+console.log('✅ All Sanket AI PWA icons successfully generated with the new logo!');
