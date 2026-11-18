@@ -21,7 +21,8 @@ import {
   Shield,
   Layers,
   ExternalLink,
-  CreditCard
+  CreditCard,
+  Database
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -132,6 +133,15 @@ export const Navbar: React.FC = () => {
       badge: 'PWA',
       accent: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20 group-hover:bg-indigo-500/20 group-hover:border-indigo-500/40',
       glow: 'group-hover:shadow-[0_0_20px_-5px_rgba(99,102,241,0.3)]',
+    },
+    {
+      title: 'Dataset & Docs',
+      desc: '288 ISL motion files, schema & CLI',
+      href: '/docs',
+      icon: Database,
+      badge: 'CLI',
+      accent: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20 group-hover:bg-emerald-500/20 group-hover:border-emerald-500/40',
+      glow: 'group-hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)]',
     },
   ];
 

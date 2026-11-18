@@ -82,6 +82,9 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
+  other: {
+    'mobile-web-app-capable': 'yes',
+  },
 };
 
 export default function RootLayout({
@@ -95,6 +98,7 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json?v=2" />
         <link rel="icon" href="/icons/icon.svg?v=2" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=2" />
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Sanket AI" />
