@@ -9,7 +9,6 @@ import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { StackedCardsSection } from '@/components/sections/StackedCardsSection';
 import { 
-  Sparkles, 
   ArrowRight, 
   Hand,
   MessageSquareText,
@@ -30,7 +29,9 @@ import {
   Lock,
   ChevronRight,
   CheckCircle2,
-  PlayCircle
+  PlayCircle,
+  Activity,
+  Layers
 } from 'lucide-react';
 
 // High-performance viewport animations (once: true prevents main-thread scroll recalculation bottlenecks on mobile)
@@ -111,7 +112,7 @@ export default function LandingPage() {
             className="max-w-4xl mx-auto text-center space-y-6"
           >
             <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/90 border border-orange-200 text-orange-600 font-extrabold text-xs uppercase tracking-widest shadow-sm backdrop-blur-md">
-              <Sparkles className="w-4 h-4 text-orange-500" />
+              <Activity className="w-4 h-4 text-orange-500" />
               <span>Sanket AI • Accessible Video Platform</span>
             </div>
 
@@ -274,7 +275,7 @@ export default function LandingPage() {
             Empowering Accessible Communication Across Institutions
           </p>
           <div className="flex flex-wrap items-center justify-center gap-10 md:gap-16 opacity-80 font-bold text-slate-700 text-base sm:text-lg">
-            <span className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-orange-500" /> Sanket AI Engine</span>
+            <span className="flex items-center gap-2"><Activity className="w-4 h-4 text-orange-500" /> Sanket AI Engine</span>
             <span>RPWD Act 2016 Compliant</span>
             <span>Inclusive Campus Hiring</span>
             <span>Family &amp; Daily Meetings</span>
@@ -289,7 +290,7 @@ export default function LandingPage() {
           
           <motion.div {...fadeInUp} className="text-center max-w-3xl mx-auto mb-16 space-y-4">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-50 border border-orange-200 text-orange-600 font-bold text-xs uppercase tracking-wider shadow-xs">
-              <Sparkles className="w-4 h-4 text-orange-500" /> Visual First Capabilities
+              <Layers className="w-4 h-4 text-orange-500" /> Visual First Capabilities
             </div>
             <h2 className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight font-heading">
               Designed for Visual First Understanding

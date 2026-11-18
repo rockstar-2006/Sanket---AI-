@@ -8,27 +8,31 @@ html {
 
 @layer base {
   body {
-    font-family: var(--font-body), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font-body), Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     @apply bg-slate-50 text-slate-900 antialiased selection:bg-orange-500/20 selection:text-orange-600;
   }
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-heading), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font-heading), "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     letter-spacing: -0.03em;
   }
 }
 
-/* Custom Font Utility Classes */
+/* Custom Font Utility Classes - Guarantees pristine modern fonts */
 .font-cursive {
-  font-family: var(--font-cursive), cursive, sans-serif;
+  font-family: var(--font-cursive), "Dancing Script", cursive, sans-serif !important;
 }
 
 .font-heading {
-  font-family: var(--font-heading), sans-serif;
+  font-family: var(--font-heading), "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   letter-spacing: -0.03em;
 }
 
 .font-body {
-  font-family: var(--font-body), sans-serif;
+  font-family: var(--font-body), Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
 }
 
 /* Cuvia Style Background Grid Lines */

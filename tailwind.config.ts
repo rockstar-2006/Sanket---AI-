@@ -45,7 +45,11 @@ const config: Config = {
         }
       },
       fontFamily: {
-        sans: ['var(--font-geist-sans)', 'Inter', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-body)', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        heading: ['var(--font-heading)', 'Plus Jakarta Sans', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        body: ['var(--font-body)', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', '"Liberation Mono"', '"Courier New"', 'monospace'],
+        cursive: ['var(--font-cursive)', 'Dancing Script', 'cursive', 'sans-serif'],
       },
       borderRadius: {
         '2xl': '1rem',

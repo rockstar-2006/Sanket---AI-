@@ -11,7 +11,7 @@ import { createMeetingSession } from '@/lib/firebase/services';
 import { 
   Video, 
   ArrowRight,
-  Sparkles,
+  ShieldCheck,
   Users,
   Mic,
   HandMetal,
@@ -139,7 +139,7 @@ export default function CreateOrJoinConsultationPage() {
         {/* Page Title Header */}
         <div className="text-center max-w-2xl mx-auto mb-8 space-y-2">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-700 font-bold text-xs uppercase tracking-wider shadow-xs">
-            <Sparkles className="w-4 h-4 text-cyan-600" />
+            <ShieldCheck className="w-4 h-4 text-cyan-600" />
             Sanket AI Accessible Meetings
           </div>
           <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
@@ -307,7 +307,7 @@ export default function CreateOrJoinConsultationPage() {
                   className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-extrabold text-sm shadow-xl shadow-cyan-600/25 transition flex items-center justify-center gap-2.5 disabled:opacity-50 cursor-pointer"
                 >
                   <Zap className="w-4 h-4 text-amber-300" />
-                  <span>{loading ? 'Starting Meeting...' : '⚡ Start & Enter Meeting Instantly'}</span>
+                  <span>{loading ? 'Starting Meeting...' : 'Start & Enter Meeting Instantly'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
 

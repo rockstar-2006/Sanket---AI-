@@ -8,7 +8,6 @@ import { Footer } from '@/components/layout/Footer';
 import { useWallet, PRICING_PLANS, PricingPlan } from '@/context/WalletContext';
 import { 
   Zap, 
-  Sparkles, 
   CheckCircle2, 
   ShieldCheck, 
   Smartphone, 
@@ -79,7 +78,7 @@ export default function PricingPage() {
     setTimeout(() => {
       setIsVerifyingUtr(false);
       addCredits(estimatedCredits, `UPI Recharge (₹${activeAmount})`, cleanUtr);
-      setUtrSuccessMsg(`🎉 Success! +${estimatedCredits} Credits have been credited to your account!`);
+      setUtrSuccessMsg(`Success! +${estimatedCredits} Credits have been credited to your account.`);
       setUtrInput('');
     }, 1200);
   };
@@ -98,7 +97,7 @@ export default function PricingPage() {
 
           {/* Luxury Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-50 border border-orange-200/90 text-orange-700 text-xs font-black uppercase tracking-widest shadow-sm">
-            <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+            <Zap className="w-3.5 h-3.5 text-orange-500" />
             <span>Official Pricing &amp; Direct UPI Gateway</span>
           </div>
 
@@ -338,7 +337,7 @@ export default function PricingPage() {
                   )}
                   {utrSuccessMsg && (
                     <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span>{utrSuccessMsg}</span>
                     </div>
                   )}
@@ -492,7 +491,7 @@ export default function PricingPage() {
             {/* Tile 3 */}
             <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
               <div className="flex items-center gap-2 text-cyan-600">
-                <Sparkles className="w-4 h-4" />
+                <Zap className="w-4 h-4" />
                 <span className="font-bold text-xs uppercase tracking-wider">3D ISL Hologram</span>
               </div>
               <div className="text-2xl font-black text-slate-900 font-heading">

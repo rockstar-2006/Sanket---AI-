@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useWallet, PRICING_PLANS, PricingPlan } from '@/context/WalletContext';
 import { 
   X, 
-  Sparkles, 
   ShieldCheck, 
   Check, 
   QrCode, 
@@ -95,7 +94,7 @@ export const RechargeModal: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono tracking-wider bg-orange-50 text-orange-700 border border-orange-200 flex items-center gap-1.5">
-                  <Sparkles className="w-3 h-3 text-orange-500" />
+                  <Zap className="w-3 h-3 text-orange-500" />
                   Instant UPI Recharge
                 </span>
                 <span className="text-xs text-slate-500 font-medium">

@@ -12,7 +12,6 @@ import {
   Laptop, 
   Apple, 
   CheckCircle2, 
-  Sparkles, 
   ArrowRight, 
   ShieldCheck, 
   Zap, 
@@ -229,7 +228,7 @@ export default function DownloadPage() {
             transition={{ duration: 0.6 }}
             className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/90 border border-orange-200 text-orange-600 font-extrabold text-xs uppercase tracking-widest shadow-sm backdrop-blur-md"
           >
-            <Sparkles className="w-4 h-4 text-orange-500" />
+            <Layers className="w-4 h-4 text-orange-500" />
             <span>Sanket AI • Pure PWA Desktop & Mobile Edition</span>
           </motion.div>
 
@@ -458,7 +457,7 @@ export default function DownloadPage() {
         <section className="mb-24">
           <div className="text-center max-w-2xl mx-auto mb-12 space-y-3">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-slate-200 text-slate-800 font-bold text-xs uppercase tracking-wider shadow-xs">
-              <Sparkles className="w-4 h-4 text-orange-500" /> Standalone Advantages
+              <Layers className="w-4 h-4 text-orange-500" /> Standalone Advantages
             </div>
             <h2 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight font-heading">
               Why Install the Standalone App?

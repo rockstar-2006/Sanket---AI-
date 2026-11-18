@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Zap, Hand, MessageSquareText, ChevronRight } from 'lucide-react';
+import { Layers, Zap, Hand, MessageSquareText, ChevronRight } from 'lucide-react';
 
 const steps = [
   {
@@ -64,7 +64,7 @@ export function StackedCardsSection() {
         {/* Header */}
         <div className="text-center max-w-2xl mx-auto space-y-3">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-50 border border-orange-200 text-orange-600 font-bold text-xs uppercase tracking-wider shadow-xs">
-            <Sparkles className="w-4 h-4 text-orange-500" /> Interactive Workflow
+            <Layers className="w-4 h-4 text-orange-500" /> Interactive Workflow
           </div>
           <h2 className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight">
             How It Works in 3 Simple Steps

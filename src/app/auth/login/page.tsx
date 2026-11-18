@@ -493,6 +493,9 @@ function LoginForm({
           return;
         }
         await signUpWithEmail(email.trim(), password, name.trim());
+        try {
+          localStorage.removeItem('sanket_onboarding_completed');
+        } catch {}
         router.push(redirectUrl);
       } else if (mood === 'lost') {
         await sendPasswordResetEmail(auth, email.trim());
@@ -512,6 +515,11 @@ function LoginForm({
   const handleGoogle = async () => {
     setError('');
     try {
+      if (mood === 'new') {
+        try {
+          localStorage.removeItem('sanket_onboarding_completed');
+        } catch {}
+      }
       await signInWithGoogle();
       router.push(redirectUrl);
     } catch {

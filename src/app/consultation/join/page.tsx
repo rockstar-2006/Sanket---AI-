@@ -10,12 +10,13 @@ import { useAuth } from '@/context/AuthContext';
 import { normalizeRoomCode } from '@/types';
 import {
   ArrowRight,
-  Sparkles,
+  ShieldCheck,
   User,
   HandMetal,
   Mic,
   CheckCircle2,
   PlusCircle,
+  RotateCcw,
 } from 'lucide-react';
 
 export default function GeneralJoinPage() {
@@ -77,7 +78,7 @@ export default function GeneralJoinPage() {
         {/* Page Title */}
         <div className="text-center max-w-xl mx-auto mb-8 space-y-2">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-700 font-bold text-xs uppercase tracking-wider shadow-xs">
-            <Sparkles className="w-4 h-4 text-cyan-600" />
+            <ShieldCheck className="w-4 h-4 text-cyan-600" />
             Direct Meeting Access
           </div>
           <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
@@ -223,7 +224,7 @@ export default function GeneralJoinPage() {
             >
               {isJoining ? (
                 <>
-                  <Sparkles className="w-4 h-4 text-cyan-200 animate-spin" />
+                  <RotateCcw className="w-4 h-4 text-cyan-200 animate-spin" />
                   <span>Joining Meeting Room...</span>
                 </>
               ) : (

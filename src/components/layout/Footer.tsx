@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Heart, ShieldCheck, Lock, Sparkles, Video, Zap, Download } from 'lucide-react';
+import { Heart, ShieldCheck, Lock, MessageSquareText, Video, Zap, Download } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
@@ -46,7 +46,7 @@ export const Footer: React.FC = () => {
             <ul className="space-y-2.5 text-sm text-slate-600">
               <li className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-emerald-500" /> 100% On-Device Landmark AI</li>
               <li className="flex items-center gap-2"><Lock className="w-4 h-4 text-cyan-500" /> End-to-End Encrypted Media</li>
-              <li className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-orange-500" /> Real-time Speech Subtitles</li>
+              <li className="flex items-center gap-2"><MessageSquareText className="w-4 h-4 text-orange-500" /> Real-time Speech Subtitles</li>
             </ul>
           </div>
 
