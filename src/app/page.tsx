@@ -33,33 +33,33 @@ import {
   PlayCircle
 } from 'lucide-react';
 
-// Continuous Scroll Animations (once: false ensures animations trigger when scrolling BOTH UP and DOWN)
+// High-performance viewport animations (once: true prevents main-thread scroll recalculation bottlenecks on mobile)
 const fadeInUp = {
-  initial: { opacity: 0, y: 50 },
+  initial: { opacity: 0, y: 30 },
   whileInView: { opacity: 1, y: 0 },
-  viewport: { once: false, amount: 0.2 },
-  transition: { duration: 0.75, ease: [0.25, 1, 0.5, 1] as const },
+  viewport: { once: true, amount: 0.1 },
+  transition: { duration: 0.5, ease: [0.25, 1, 0.5, 1] as const },
 };
 
 const fadeInFromLeft = {
-  initial: { opacity: 0, x: -75 },
+  initial: { opacity: 0, x: -40 },
   whileInView: { opacity: 1, x: 0 },
-  viewport: { once: false, amount: 0.2 },
-  transition: { duration: 0.8, ease: [0.25, 1, 0.5, 1] as const },
+  viewport: { once: true, amount: 0.1 },
+  transition: { duration: 0.5, ease: [0.25, 1, 0.5, 1] as const },
 };
 
 const fadeInFromRight = {
-  initial: { opacity: 0, x: 75 },
+  initial: { opacity: 0, x: 40 },
   whileInView: { opacity: 1, x: 0 },
-  viewport: { once: false, amount: 0.2 },
-  transition: { duration: 0.8, ease: [0.25, 1, 0.5, 1] as const },
+  viewport: { once: true, amount: 0.1 },
+  transition: { duration: 0.5, ease: [0.25, 1, 0.5, 1] as const },
 };
 
 const fadeInScale = {
-  initial: { opacity: 0, scale: 0.86, y: 30 },
+  initial: { opacity: 0, scale: 0.92, y: 20 },
   whileInView: { opacity: 1, scale: 1, y: 0 },
-  viewport: { once: false, amount: 0.2 },
-  transition: { duration: 0.7, ease: [0.25, 1, 0.5, 1] as const },
+  viewport: { once: true, amount: 0.1 },
+  transition: { duration: 0.45, ease: [0.25, 1, 0.5, 1] as const },
 };
 
 export default function LandingPage() {
@@ -96,10 +96,10 @@ export default function LandingPage() {
       {/* 1. HERO SECTION - Giant Animated Parallax Typography & 3D Illustration Canvas */}
       <section className="relative pt-16 pb-24 md:pt-24 md:pb-32 overflow-hidden">
         
-        {/* Parallax Glowing Ambient Blobs */}
-        <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[700px] h-[500px] bg-gradient-to-tr from-orange-400/20 via-purple-500/20 to-cyan-400/20 rounded-full blur-3xl pointer-events-none animate-pulse-glow" />
-        <div className="absolute top-40 -left-20 w-80 h-80 bg-orange-300/30 rounded-full blur-3xl pointer-events-none animate-float" />
-        <div className="absolute top-60 -right-20 w-80 h-80 bg-purple-300/30 rounded-full blur-3xl pointer-events-none animate-float-reverse" />
+        {/* Parallax Glowing Ambient Blobs (Optimized for mobile) */}
+        <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[350px] sm:w-[700px] h-[300px] sm:h-[500px] bg-gradient-to-tr from-orange-400/20 via-purple-500/20 to-cyan-400/20 rounded-full blur-2xl sm:blur-3xl pointer-events-none sm:animate-pulse-glow" />
+        <div className="hidden sm:block absolute top-40 -left-20 w-80 h-80 bg-orange-300/25 rounded-full blur-3xl pointer-events-none animate-float" />
+        <div className="hidden sm:block absolute top-60 -right-20 w-80 h-80 bg-purple-300/25 rounded-full blur-3xl pointer-events-none animate-float-reverse" />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           
@@ -275,10 +275,10 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-wrap items-center justify-center gap-10 md:gap-16 opacity-80 font-bold text-slate-700 text-base sm:text-lg">
             <span className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-orange-500" /> Sanket AI Engine</span>
-            <span>RPWD Act 2016</span>
+            <span>RPWD Act 2016 Compliant</span>
             <span>Inclusive Campus Hiring</span>
-            <span>Accessible Telehealth</span>
-            <span>Official Verifications</span>
+            <span>Family &amp; Daily Meetings</span>
+            <span>Telecom Relay Services</span>
           </div>
         </motion.div>
       </section>
@@ -458,7 +458,7 @@ export default function LandingPage() {
               </h2>
 
               <p className="text-slate-600 text-base leading-relaxed font-body">
-                Communication is a two-way street. When the interviewer or doctor speaks, Sanket transcribes their words into crisp, readable live captions anchored at the bottom of the video room.
+                Communication is a two-way street. When the other participant or colleague speaks, Sanket transcribes their words into crisp, readable live captions anchored at the bottom of the video room.
               </p>
 
               <div className="space-y-3 pt-2">
@@ -544,9 +544,9 @@ export default function LandingPage() {
                 />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-900 mb-1 font-heading">Telemedicine</h3>
+                <h3 className="text-lg font-bold text-slate-900 mb-1 font-heading">Family &amp; Daily Calls</h3>
                 <p className="text-slate-600 text-xs leading-relaxed font-body">
-                  Express symptoms directly to non-signing doctors in remote or clinic calls.
+                  Connect effortlessly with friends, family, and colleagues with instant two-way translation.
                 </p>
               </div>
             </motion.div>

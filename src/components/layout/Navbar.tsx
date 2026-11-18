@@ -65,11 +65,16 @@ export const Navbar: React.FC = () => {
             onClick={() => setMenuOpen(false)}
             className="flex items-center gap-2.5 group shrink-0"
           >
-            <div className="w-8 h-8 rounded-full bg-white text-slate-900 flex items-center justify-center font-black shadow-md group-hover:scale-105 transition-transform">
-              <Video className="w-4 h-4 text-orange-500" />
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 p-1 flex items-center justify-center shadow-md shadow-orange-500/20 group-hover:scale-105 transition-transform">
+              <svg viewBox="0 0 100 100" className="w-full h-full" fill="none">
+                <path d="M 35 34 C 35 22, 45 18, 58 18 C 72 18, 78 27, 74 38 C 70 48, 56 50, 47 53 C 38 56, 30 62, 29 71 C 28 77, 31 79, 34 78" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M 65 66 C 65 78, 55 82, 42 82 C 28 82, 22 73, 26 62 C 30 52, 44 50, 53 47 C 62 44, 70 38, 71 29 C 72 23, 69 21, 66 22" stroke="#FFF7ED" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
+                <circle cx="50" cy="50" r="8" fill="#38BDF8" />
+                <path d="M 50 45 L 52 49 L 55 50 L 52 51 L 50 55 L 48 51 L 45 50 L 48 49 Z" fill="#FFFFFF" />
+              </svg>
             </div>
-            <span className="font-extrabold text-sm sm:text-base text-white tracking-tight">
-              Sanket<span className="w-1.5 h-1.5 rounded-full bg-orange-500 ml-0.5 inline-block" />
+            <span className="font-extrabold text-sm sm:text-base text-white tracking-tight font-heading">
+              Sanket<span className="text-orange-500">.ai</span>
             </span>
           </Link>
 

@@ -36,7 +36,7 @@ export const Footer: React.FC = () => {
               </li>
               <li><Link href="/call-center" className="hover:text-orange-500 transition">Voice Telecom Relay</Link></li>
               <li><Link href="/#solutions" className="hover:text-orange-500 transition">Job &amp; Technical Interviews</Link></li>
-              <li><Link href="/#solutions" className="hover:text-orange-500 transition">Telemedicine Consultations</Link></li>
+              <li><Link href="/#solutions" className="hover:text-orange-500 transition">Family &amp; Daily Conversations</Link></li>
               <li><Link href="/#solutions" className="hover:text-orange-500 transition">Academic Viva &amp; Placements</Link></li>
             </ul>
           </div>

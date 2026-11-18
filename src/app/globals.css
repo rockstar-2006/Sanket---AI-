@@ -192,6 +192,35 @@ html {
   will-change: transform, opacity, filter;
 }
 
+/* Mobile Performance Optimizations: Eliminate mobile frame drops & GPU fill-rate lag */
+@media (max-width: 768px) {
+  .animate-float,
+  .animate-float-reverse,
+  .animate-pulse-glow,
+  .animate-spin-slow {
+    animation: none !important;
+    transform: none !important;
+  }
+
+  /* Reduce costly Gaussian blur filters on mobile */
+  .blur-3xl {
+    filter: blur(20px) !important;
+    opacity: 0.25 !important;
+  }
+  .blur-2xl {
+    filter: blur(14px) !important;
+  }
+  .backdrop-blur-xl,
+  .backdrop-blur-3xl {
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+  }
+
+  .gsap-text-reveal {
+    filter: none !important;
+  }
+}
+
 /* Accessibility: disable heavy motion if user prefers reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .animate-float,

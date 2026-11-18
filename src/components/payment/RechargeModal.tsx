@@ -18,7 +18,7 @@ import {
   Lock
 } from 'lucide-react';
 
-const MERCHANT_UPI_ID = 'bhushanpoojary2006@okaxis';
+const MERCHANT_UPI_ID = '7381709385@pthdfc';
 const MERCHANT_NAME = 'Sanket AI';
 
 export const RechargeModal: React.FC = () => {

@@ -37,8 +37,9 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://sanket-ai.onrender.com'),
   title: 'Sanket AI - Accessible Video Meeting Platform',
-  description: 'AI-powered live video meeting platform with on-device Indian Sign Language recognition and real-time speech subtitles.',
+  description: 'AI-powered live video meeting platform with on-device Indian Sign Language recognition, real-time speech subtitles, and 3D interpreter avatar.',
   manifest: '/manifest.json',
   icons: {
     icon: [
@@ -49,6 +50,28 @@ export const metadata: Metadata = {
     apple: [
       { url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
     ],
+  },
+  openGraph: {
+    title: 'Sanket AI - Accessible Video Meetings & ISL Interpreter',
+    description: 'AI-powered live video meetings with Indian Sign Language recognition, live speech subtitles, and 3D avatar interpreter. Accessible for everyone.',
+    url: '/',
+    siteName: 'Sanket AI',
+    images: [
+      {
+        url: '/opengraph-image',
+        width: 1200,
+        height: 630,
+        alt: 'Sanket AI - Accessible Video Meetings',
+      },
+    ],
+    locale: 'en_IN',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Sanket AI - Accessible Video Meetings',
+    description: 'AI-powered live video meetings with Indian Sign Language recognition and live speech subtitles.',
+    images: ['/opengraph-image'],
   },
   appleWebApp: {
     capable: true,
