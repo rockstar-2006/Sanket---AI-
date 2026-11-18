@@ -299,7 +299,14 @@ Signed tokens: [${reconstructed.map(t => `"${t}"`).join(', ')}]`;
           const geminiData = await fetchRes.json();
           const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
           const cleanedJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-          const parsed = JSON.parse(cleanedJson);
+          let parsed: any = null;
+          if (cleanedJson) {
+            try {
+              parsed = JSON.parse(cleanedJson);
+            } catch (jsonErr) {
+              console.warn('[SignToSpeechAgent] Failed to parse model JSON:', cleanedJson, jsonErr);
+            }
+          }
           if (parsed?.spokenSentence) {
             return {
               spokenText: parsed.spokenSentence,

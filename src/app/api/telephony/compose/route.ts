@@ -94,24 +94,26 @@ export async function POST(req: NextRequest) {
       return t;
     });
 
-    const prompt = `You are a real-time AI Indian Sign Language (ISL) interpreter and speech synthesizer for a deaf person.
+    const prompt = `You are a real-time AI Indian Sign Language (ISL) interpreter and speech synthesizer for a deaf person on a live phone call.
 The deaf person performed the following sign language gesture(s) or fingerspelled word(s):
 ${cleanedTokens.join(', ')}
 
 Conversation context:
-- Setting: ${scenarioId === 'daily' ? 'Casual daily conversation with a friend or colleague' : `${scenarioId} communication`}
-- What the other person said: "${callerMessage || 'Starting or continuing conversation'}"
+- Setting: Live phone call communication
+- What the caller on the phone just said: "${callerMessage || 'Starting or continuing conversation'}"
 
 Task:
-Formulate ONE natural, articulate, grammatically complete human English sentence that accurately translates what the deaf person signed.
-Rules:
-- Strictly derive from what was signed (do NOT invent unrelated facts).
-- If they signed [HELLO] or [HELLO, HOW ARE YOU], form a friendly greeting.
-- If they fingerspelled a name (e.g. "RAHUL") or signed [I / MY, "RAHUL"], form "My name is Rahul." or incorporate it appropriately.
-- If they signed [FOOD, TIME], form "Is it time to have food now? Let's eat." or similar.
-- If they signed [WAIT], form a polite request to wait.
-- Speak directly in the first person ("I", "we").
-- Return ONLY the plain text sentence. Do NOT include quotes, brackets, or markdown explanations.`;
+Formulate ONE natural, fluent, articulate human English sentence in the first person that accurately translates what the deaf person signed in direct response to the caller.
+
+Production Rules:
+- If multiple signs were performed in sequence (e.g. [GOOD NIGHT, HELLO, PERFECT]), prioritize the most recent intended gesture while keeping the sentence polite, complete, and contextually fluent.
+- If the caller asked a question (e.g. "How about you?"), synthesize a direct, warm answer reflecting the signed intent (e.g. signed [PERFECT] or [GOOD] -> "I am doing really well too, thank you so much for asking!").
+- If they signed [HELLO] or [HI], formulate a warm greeting matching the caller.
+- If they fingerspelled a word or name (e.g. "RAHUL"), incorporate it naturally (e.g. "My name is Rahul, very glad to connect with you.").
+- If they signed [WAIT], politely ask the caller to hold (e.g. "Please hold on for just a moment, I am checking that right now.").
+- If they signed [THANK] or [THANK YOU], express genuine appreciation.
+- Speak directly in the first person ("I", "we"). Never sound robotic or generic.
+- Return ONLY the exact spoken sentence with no quotes, brackets, or conversational preamble.`;
 
     // 3. Determine Model & Key (Client custom override OR Server default)
     const activeKey = customKey || getDefaultKey(provider);
@@ -297,7 +299,7 @@ async function executeLLMCall(
     return text;
   }
 
-  // 4. Groq (Ultra-low latency Llama 3.3 / Mixtral / Any Model)
+  // 4. Groq (Ultra-low latency fast LLM inference)
   if (provider === 'groq') {
     const url = customBaseUrl || 'https://api.groq.com/openai/v1/chat/completions';
     const res = await fetch(url, {
@@ -308,9 +310,15 @@ async function executeLLMCall(
       },
       body: JSON.stringify({
         model: cleanModel,
-        max_tokens: 80,
+        max_tokens: 150,
         temperature: 0.3,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a real-time speech interpreter for a deaf person. Formulate one natural, articulate, polite first-person English sentence strictly translating their signs in the context of the conversation. Output ONLY the plain sentence.'
+          },
+          { role: 'user', content: prompt }
+        ],
       }),
     });
 
@@ -320,7 +328,8 @@ async function executeLLMCall(
     }
 
     const data = await res.json();
-    const text = data.choices?.[0]?.message?.content?.trim();
+    const msg = data.choices?.[0]?.message;
+    const text = (msg?.content || msg?.reasoning_content || '').trim();
     if (!text) throw new Error('Groq returned an empty response.');
     return text;
   }

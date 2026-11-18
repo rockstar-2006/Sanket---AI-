@@ -24,6 +24,7 @@ import {
 import nextDynamic from 'next/dynamic';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '@/context/AuthContext';
+import { AuthGuard } from '@/components/auth/AuthGuard';
 import { normalizeRoomCode } from '@/types';
 import { SignEmoji3DViewer, SIGN_EMOJIS_LIST, SignEmojiDef } from '@/components/emojis/SignEmoji3DViewer';
 import {
@@ -78,6 +79,7 @@ import {
   ShieldCheck,
   AlertTriangle,
   QrCode,
+  Info,
 } from 'lucide-react';
 import { QrInviteModal } from '@/components/meeting/QrInviteModal';
 import {
@@ -929,6 +931,8 @@ function MeetingRoomContent() {
   // ─── User Biography & Meeting Context Profile (for Context-Aware AI) ─────────
   const [meetingContext, setMeetingContext] = useState<string>('');
   const [showContextModal, setShowContextModal] = useState<boolean>(false);
+  const [showLobbyContext, setShowLobbyContext] = useState<boolean>(false);
+  const [showSwitchSettings, setShowSwitchSettings] = useState<boolean>(false);
   const meetingContextRef = useRef<string>('');
   meetingContextRef.current = meetingContext;
 
@@ -3974,37 +3978,37 @@ function MeetingRoomContent() {
   if (!hasJoined) {
     const finalDisplayName = lobbyName.trim() || displayName;
     return (
-      <div className="min-h-screen w-screen bg-[#202124] text-white flex flex-col justify-between font-sans select-none relative overflow-y-auto">
+      <div className="min-h-screen w-screen bg-slate-50 bg-grid-lines text-slate-900 flex flex-col justify-between font-sans select-none relative overflow-y-auto selection:bg-orange-500/20 selection:text-orange-600">
         {/* Header */}
-        <header className="h-16 px-6 sm:px-10 flex items-center justify-between border-b border-[#3c4043]/60 bg-[#202124] shrink-0">
+        <header className="h-16 px-6 sm:px-10 flex items-center justify-between border-b border-slate-200/80 bg-white shadow-xs shrink-0">
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-9 h-9 rounded-full bg-white text-slate-900 flex items-center justify-center font-black shadow-md group-hover:scale-105 transition-transform">
+            <div className="w-9 h-9 rounded-full bg-white text-slate-900 border border-slate-200 flex items-center justify-center font-black shadow-sm group-hover:scale-105 transition-transform">
               <Video className="w-4 h-4 text-orange-500" />
             </div>
-            <span className="font-extrabold text-base text-white tracking-tight flex items-center">
+            <span className="font-extrabold text-base text-slate-900 tracking-tight flex items-center font-heading">
               Sanket<span className="w-1.5 h-1.5 rounded-full bg-orange-500 ml-0.5 inline-block" />
-              <span className="text-xs font-normal text-slate-400 border-l border-slate-700 pl-2.5 ml-2.5">
+              <span className="text-xs font-normal text-slate-500 border-l border-slate-200 pl-2.5 ml-2.5 font-sans">
                 Meeting Lobby
               </span>
             </span>
           </Link>
 
           <div className="flex items-center gap-3">
-            <span className="text-xs font-mono text-slate-300 bg-[#303134] px-3.5 py-1.5 rounded-full border border-[#3c4043] flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              Room: <strong className="text-orange-400 font-bold">{roomId}</strong>
+            <span className="text-xs font-mono text-slate-700 bg-slate-100 px-3.5 py-1.5 rounded-full border border-slate-200 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Room: <strong className="text-slate-900 font-bold">{roomId}</strong>
             </span>
-            <span className="text-xs font-mono text-slate-400 hidden sm:inline">
+            <span className="text-xs font-mono text-slate-500 hidden sm:inline">
               {clockTime}
             </span>
           </div>
         </header>
 
         {/* Main Lobby Container */}
-        <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-8 pt-4 sm:pt-6 pb-8 flex flex-col lg:flex-row items-start justify-center gap-8 lg:gap-12">
+        <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-8 py-6 sm:py-8 flex flex-col lg:flex-row items-center justify-center gap-6 lg:gap-10">
           {/* Left Column: Camera Preview & Pre-Call Diagnostics Tile */}
-          <div className="w-full lg:w-[50%] xl:w-[52%] flex flex-col lg:pt-1">
-            <div className="w-full aspect-video rounded-3xl bg-[#171717] border border-[#3c4043] overflow-hidden relative shadow-2xl flex items-center justify-center">
+          <div className="gsap-from-left w-full lg:w-[50%] flex flex-col">
+            <div className="w-full aspect-video rounded-3xl bg-slate-950 border border-slate-300 overflow-hidden relative shadow-xl flex items-center justify-center">
               {/* Local Video Stream */}
               <video
                 ref={(el) => {
@@ -4254,313 +4258,218 @@ function MeetingRoomContent() {
               </div>
             </div>
 
-            {/* Quick Interactive Sign & Audio Test Diagnostics Center */}
-            {selectedLobbyRole === 'deaf_signer' ? (
-              <div className="w-full mt-2 flex flex-col gap-2">
-                {/* Diagnostics Status Bar */}
-                <div className="w-full p-2.5 rounded-2xl bg-[#26282b] border border-[#3c4043] flex items-center justify-between gap-2 text-[11px] font-mono">
-                  <div className="flex items-center gap-1.5 text-slate-300">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>Camera: <strong className="text-emerald-400">Active</strong></span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-slate-300">
-                    <span className={`w-2 h-2 rounded-full ${lobbyHandsDetected > 0 ? 'bg-emerald-400' : 'bg-amber-400 animate-ping'}`} />
+            {/* Clean Diagnostics & Pre-Call Test Hub */}
+            <div className="w-full mt-3 bg-white rounded-3xl border border-slate-200/90 shadow-md p-4 sm:p-5 flex flex-col gap-3.5">
+              {/* Row 1: Real-Time Equipment & Pipeline Status */}
+              <div className="flex items-center justify-between gap-2 text-xs font-mono pb-3 border-b border-slate-100 flex-wrap">
+                <div className="flex items-center gap-1.5 text-slate-700">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Camera: <strong className="text-emerald-700 font-bold">{isVideoOn ? 'Active' : 'Off'}</strong></span>
+                </div>
+
+                {selectedLobbyRole === 'deaf_signer' ? (
+                  <div className="flex items-center gap-1.5 text-slate-700">
+                    <span className={`w-2 h-2 rounded-full ${lobbyHandsDetected > 0 ? 'bg-emerald-500' : 'bg-amber-500 animate-ping'}`} />
                     <span>
                       {lobbyHandsDetected > 0 ? (
-                        <strong className="text-emerald-300">{lobbyHandsDetected} Hand in Frame</strong>
+                        <strong className="text-emerald-700 font-bold">{lobbyHandsDetected} Hand in Frame</strong>
                       ) : (
-                        <span className="text-amber-300">Raise hand to test</span>
+                        <span className="text-amber-700 font-medium">Raise hand to test</span>
                       )}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-slate-300">
-                    <Sparkles className="w-3 h-3 text-orange-400" />
-                    <span>AI Model: <strong className="text-orange-400">261 Signs + A-Z</strong></span>
-                  </div>
-                </div>
-
-                {/* Calibrated Signs Badges (If any sign was successfully tested) */}
-                {lobbyTestedSigns.length > 0 && (
-                  <div className="p-2.5 rounded-2xl bg-emerald-950/50 border border-emerald-500/40 text-xs text-white flex flex-col gap-1.5 animate-in fade-in duration-150">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-emerald-400">
-                      <span className="flex items-center gap-1.5">
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Pre-Call Tested &amp; Calibrated ({lobbyTestedSigns.length} Signs Verified):</span>
-                      </span>
-                      <span className="text-[10px] text-emerald-300/80 font-mono">100% Ready for Meeting</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {lobbyTestedSigns.map((sign) => (
-                        <span
-                          key={sign}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-mono text-[11px] font-bold flex items-center gap-1.5"
-                        >
-                          <Check className="w-3 h-3 text-emerald-400" />
-                          <span>{sign.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim()}</span>
-                        </span>
-                      ))}
-                    </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-slate-700">
+                    <span className={`w-2 h-2 rounded-full ${isMicOn ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                    <span>Mic: <strong className="text-slate-900 font-bold">{isMicOn ? `${lobbyMicVolume}% dB` : 'Muted'}</strong></span>
                   </div>
                 )}
 
-                {/* Hands-Free Mode Switch Sign Configuration Card */}
-                <div className="p-3 rounded-2xl bg-gradient-to-r from-slate-900 to-[#1e2229] border border-orange-500/40 text-xs text-white flex flex-col gap-2 shadow-lg">
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-2 font-bold text-orange-400 text-xs">
-                      <Sparkles className="w-4 h-4 text-orange-400" />
-                      <span>Hands-Free Mode Switch Sign (Word &lt;-&gt; Spell Letters)</span>
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">No mouse needed in call</span>
-                  </div>
-
-                  <p className="text-[11px] text-slate-300">
-                    Select your preferred physical sign to switch between <strong>Whole Words</strong> and <strong>Spell Letters</strong> during the live meeting:
-                  </p>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-0.5">
-                    {AVAILABLE_SWITCH_SIGNS.map((sign) => {
-                      const isSelected = customSwitchSign === sign.id;
-                      return (
-                        <button
-                          key={sign.id}
-                          type="button"
-                          onClick={() => handleSelectSwitchSign(sign.id)}
-                          className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col gap-1 ${
-                            isSelected
-                              ? 'bg-orange-500/20 border-orange-500 text-white shadow-md ring-1 ring-orange-500/40'
-                              : 'bg-slate-950/60 hover:bg-slate-800/80 border-slate-700/80 text-slate-300'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                              <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-orange-400' : 'bg-slate-500'}`} />
-                              {sign.name}
-                            </span>
-                            {isSelected && (
-                              <span className="px-1.5 py-0.5 rounded bg-orange-500 text-slate-950 font-bold text-[9px] font-mono uppercase">
-                                Active
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-slate-300 leading-tight">
-                            {sign.instruction}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-800 text-[10px] font-mono text-slate-400">
-                    <span className="flex items-center gap-1 text-emerald-400">
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Saved per account in local profile</span>
-                    </span>
-                    <span className="text-amber-300">Test it in preview camera above!</span>
-                  </div>
-                </div>
-
-                {/* Test Prompts / Gesture Chips */}
-                <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 mt-0.5">
-                  <span className="flex items-center gap-1 text-orange-400 font-semibold">
-                    <Sparkles className="w-3 h-3" />
-                    <span>
-                      {lobbySignTestMode === 'fingerspell' ? 'Click any letter to test before joining:' : 'Click any sign to test before joining:'}
-                    </span>
-                  </span>
-                  <span>{lobbySignTestMode === 'fingerspell' ? 'Hold letter 0.3s to verify' : 'Hold sign 0.4s to verify'}</span>
-                </div>
-
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {lobbySignTestMode === 'fingerspell' ? (
-                    [
-                      { label: 'Letter A', sign: 'A', hint: 'Two index fingers touching at tips in tent (/\\) or closed fist with upright thumb alongside index.' },
-                      { label: 'Letter B', sign: 'B', hint: 'Four fingers upright together with thumb folded across palm.' },
-                      { label: 'Letter C', sign: 'C', hint: 'Curved cupped hand facing forward forming a clean C shape.' },
-                      { label: 'Letter D', sign: 'D', hint: 'Index finger pointing straight up with thumb touching curled fingers.' },
-                      { label: 'Letter E', sign: 'E', hint: 'All fingertips curled down tightly touching thumb tip.' },
-                      { label: 'Letter F', sign: 'F', hint: 'Thumb and index tips touching in circle, other 3 fingers upright.' },
-                      { label: 'Letter H', sign: 'H', hint: 'Index and middle fingers extended horizontally forward.' },
-                      { label: 'Letter I', sign: 'I', hint: 'Fist with pinky finger pointing straight up.' },
-                      { label: 'Letter L', sign: 'L', hint: 'Index finger straight UP and thumb at 90 degrees forming L-shape.' },
-                      { label: 'Letter O', sign: 'O', hint: 'All fingers curved touching thumb tip in a circular ring.' },
-                      { label: 'Letter S', sign: 'S', hint: 'Closed fist with thumb folded across fingers, or interlocked pinkies.' },
-                      { label: 'Letter T', sign: 'T', hint: 'One index upright with other index horizontal resting on top (T crossbar).' },
-                      { label: 'Letter U', sign: 'U', hint: 'Index and middle fingers together upright forming U.' },
-                      { label: 'Letter V', sign: 'V', hint: 'Index and middle fingers extended in upright V peace/victory sign.' },
-                      { label: 'Letter W', sign: 'W', hint: 'Three upright fingers forming W.' },
-                      { label: 'Letter X', sign: 'X', hint: 'Both index fingers extended and crossing over each other.' },
-                      { label: 'Letter Y', sign: 'Y', hint: 'Thumb and pinky extended like a telephone/shaka sign.' },
-                      { label: 'Switch to Words', sign: 'switch_to_words', hint: 'Switch back to whole word gestures (Hello, Thank You, Doctor, etc.)' },
-                    ].map((item) => (
-                      <button
-                        key={item.label}
-                        type="button"
-                        onClick={() => {
-                          if (item.sign === 'switch_to_words') {
-                            setLobbySignTestMode('word');
-                            lobbyRecognizerRef.current?.setMode('word');
-                            setLobbyActiveTip(null);
-                          } else {
-                            setLobbyActiveTip({ label: item.label, tip: item.hint });
-                          }
-                        }}
-                        className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium transition cursor-pointer flex items-center gap-1.5 shadow-sm ${
-                          item.sign === 'switch_to_words'
-                            ? 'bg-orange-950/40 hover:bg-orange-900/50 border-orange-500/50 text-orange-200'
-                            : 'bg-[#26282b] hover:bg-[#303134] hover:border-amber-500/50 border-[#3c4043] text-slate-200'
-                        }`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${item.sign === 'switch_to_words' ? 'bg-orange-400' : 'bg-amber-400'}`} />
-                        <span>{item.label}</span>
-                      </button>
-                    ))
-                  ) : (
-                    [
-                      { label: 'Hello', sign: 'hello', hint: 'Raise open flat palm near temple and wave gently outward.' },
-                      { label: 'Yes / Good', sign: 'yes', hint: 'Make a fist with thumb extended upright.' },
-                      { label: 'No / Bad', sign: 'no', hint: 'Make a fist with thumb pointing down, or snap fingers against thumb.' },
-                      { label: 'Thank You', sign: 'thankyou', hint: 'Touch fingertips of flat hand to chin and move forward towards camera.' },
-                      { label: 'Doctor', sign: 'doctor', hint: 'Tap index & middle fingertips of dominant hand onto opposite wrist.' },
-                      { label: 'Help', sign: 'help', hint: 'Place closed fist on top of flat open palm.' },
-                      { label: 'Letters (A-Z)', sign: 'letters', hint: 'Switch to Letters mode to test fingerspelling!' },
-                    ].map((item) => (
-                      <button
-                        key={item.label}
-                        type="button"
-                        onClick={() => {
-                          if (item.sign === 'letters') {
-                            setLobbySignTestMode('fingerspell');
-                            lobbyRecognizerRef.current?.setMode('fingerspell');
-                            setLobbyActiveTip(null);
-                          } else {
-                            setLobbyActiveTip({ label: item.label, tip: item.hint });
-                          }
-                        }}
-                        className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition cursor-pointer flex items-center gap-1.5 shadow-sm ${
-                          item.sign === 'letters'
-                            ? 'bg-amber-950/40 hover:bg-amber-900/50 border-amber-500/50 text-amber-200'
-                            : 'bg-[#26282b] hover:bg-[#303134] hover:border-orange-500/50 border-[#3c4043] text-slate-200'
-                        }`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${item.sign === 'letters' ? 'bg-amber-400' : 'bg-orange-400'}`} />
-                        <span>{item.label}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-
-                {lobbyActiveTip && (
-                  <div className="p-2.5 rounded-xl bg-orange-950/40 border border-orange-500/40 text-xs text-orange-200 flex items-start justify-between gap-2 animate-in fade-in duration-150">
-                    <div>
-                      <span className="font-bold text-white mr-1.5">{lobbyActiveTip.label}:</span>
-                      <span className="text-orange-200/90">{lobbyActiveTip.tip}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setLobbyActiveTip(null)}
-                      className="text-orange-400 hover:text-white text-xs p-0.5 cursor-pointer"
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
-
-                {/* Test Speech Audio Output Button */}
-                <div className="flex items-center justify-between pt-1">
-                  <button
-                    type="button"
-                    onClick={testLobbyAudioOutput}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#26282b] hover:bg-slate-700 border border-[#3c4043] text-xs text-slate-300 font-mono transition cursor-pointer"
-                  >
-                    <Volume2 className="w-3.5 h-3.5 text-orange-400" />
-                    <span>Test Spoken Voice Output (Audio Synthesizer Check)</span>
-                  </button>
+                <div className="flex items-center gap-1.5 text-slate-700">
+                  <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+                  <span>AI Engine: <strong className="text-orange-600 font-bold">261 Signs + A-Z</strong></span>
                 </div>
               </div>
-            ) : (
-              <div className="w-full mt-3 flex flex-col gap-2.5">
-                {/* Voice Diagnostics & Volume Bar */}
-                <div className="w-full p-3 rounded-2xl bg-[#26282b] border border-[#3c4043] flex flex-col gap-2">
+
+              {/* Row 2: Role-Specific Interactive Test */}
+              {selectedLobbyRole === 'deaf_signer' ? (
+                <div className="flex flex-col gap-2.5">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-mono text-sky-300 font-semibold flex items-center gap-1.5">
-                      <Mic className="w-4 h-4 text-sky-400" />
-                      <span>Microphone Input Level</span>
+                    <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                      <Hand className="w-3.5 h-3.5 text-orange-500" />
+                      <span>Quick Sign Test:</span>
                     </span>
-                    <span className="font-mono text-[10px] text-slate-400">
-                      {isMicOn ? `${lobbyMicVolume}% dB` : 'Muted'}
+                    <span className="text-[11px] text-slate-500 font-mono">
+                      Hold gesture 0.4s to verify
                     </span>
                   </div>
 
-                  <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden flex">
-                    <div
-                      className={`h-full transition-all duration-75 rounded-full ${
-                        lobbyMicVolume > 70
-                          ? 'bg-rose-500'
-                          : lobbyMicVolume > 30
-                          ? 'bg-emerald-400'
-                          : 'bg-sky-400'
-                      }`}
-                      style={{ width: `${Math.max(4, isMicOn ? lobbyMicVolume : 0)}%` }}
-                    />
+                  {/* Clean Single-Row Sign Chips */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[
+                      { label: 'Hello', hint: 'Raise open flat palm near temple and wave gently outward.' },
+                      { label: 'Thank You', hint: 'Touch fingertips of flat hand to chin and move forward towards camera.' },
+                      { label: 'Doctor', hint: 'Tap index & middle fingertips of dominant hand onto opposite wrist.' },
+                      { label: 'Yes / Good', hint: 'Make a fist with thumb extended upright.' },
+                      { label: 'Letters (A-Z)', hint: 'Switch to fingerspell mode to test spelling letters.' },
+                    ].map((item) => (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => {
+                          if (item.label.includes('Letters')) {
+                            const newMode = lobbySignTestMode === 'word' ? 'fingerspell' : 'word';
+                            setLobbySignTestMode(newMode);
+                            lobbyRecognizerRef.current?.setMode(newMode);
+                            setLobbyActiveTip(null);
+                          } else {
+                            setLobbyActiveTip({ label: item.label, tip: item.hint });
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                        <span>{item.label}</span>
+                      </button>
+                    ))}
                   </div>
 
-                  <p className="text-[11px] text-slate-400 font-mono">
-                    {isMicOn
-                      ? (lobbyMicVolume > 10 ? 'Sound detected. Your mic is working clearly.' : 'Speak into your microphone to test volume...')
-                      : 'Microphone is muted. Unmute using the button above to test.'}
-                  </p>
+                  {/* Active Sign Tip if clicked */}
+                  {lobbyActiveTip && (
+                    <div className="p-2.5 rounded-xl bg-orange-50 border border-orange-200 text-xs text-orange-950 flex items-start justify-between gap-2 animate-in fade-in duration-150 shadow-xs">
+                      <div>
+                        <strong className="text-orange-900 mr-1">{lobbyActiveTip.label}:</strong>
+                        <span className="text-orange-800">{lobbyActiveTip.tip}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setLobbyActiveTip(null)}
+                        className="text-orange-500 hover:text-orange-900 text-xs font-bold"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Tested signs confirmation badge if any tested */}
+                  {lobbyTestedSigns.length > 0 && (
+                    <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-950 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 font-bold text-emerald-800 text-[11px]">
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Calibrated ({lobbyTestedSigns.length} gestures verified)</span>
+                      </span>
+                      <span className="text-[10px] text-emerald-700 font-mono">100% Ready</span>
+                    </div>
+                  )}
+
+                  {/* Compact Hands-Free Mode Switch Sign Dropdown/Accordion */}
+                  <div className="pt-2 border-t border-slate-100 flex flex-col gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowSwitchSettings(!showSwitchSettings)}
+                      className="flex items-center justify-between text-[11px] font-mono text-slate-600 hover:text-slate-900 cursor-pointer w-full text-left"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles className="w-3 h-3 text-orange-500" />
+                        <span>Hands-Free Switch Sign: <strong className="text-slate-800 underline">{AVAILABLE_SWITCH_SIGNS.find(s => s.id === customSwitchSign)?.name || customSwitchSign}</strong></span>
+                      </span>
+                      <span className="text-orange-600 font-bold">{showSwitchSettings ? 'Close' : 'Change'}</span>
+                    </button>
+
+                    {showSwitchSettings && (
+                      <div className="grid grid-cols-2 gap-1.5 pt-1 animate-in fade-in duration-150">
+                        {AVAILABLE_SWITCH_SIGNS.map((sign) => {
+                          const isSelected = customSwitchSign === sign.id;
+                          return (
+                            <button
+                              key={sign.id}
+                              type="button"
+                              onClick={() => {
+                                handleSelectSwitchSign(sign.id);
+                                setShowSwitchSettings(false);
+                              }}
+                              className={`p-2 rounded-xl border text-left text-xs transition cursor-pointer ${
+                                isSelected
+                                  ? 'bg-orange-50 border-orange-500 text-orange-950 font-bold shadow-xs'
+                                  : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold">{sign.name}</span>
+                                {isSelected && <span className="text-[9px] bg-orange-500 text-white px-1 rounded">Active</span>}
+                              </div>
+                              <span className="text-[10px] text-slate-500 block leading-tight mt-0.5">{sign.instruction}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
-
-                {/* Interactive Voice-to-Sign Tester */}
-                <div className="w-full p-3 rounded-2xl bg-[#303134]/60 border border-[#3c4043] flex flex-col gap-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-white flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Test Speech-to-Sign Pipeline</span>
+              ) : (
+                /* Speaker / Doctor View */
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                      <Mic className="w-3.5 h-3.5 text-sky-500" />
+                      <span>Microphone Test:</span>
                     </span>
                     <button
                       type="button"
                       onClick={testLobbyVoice}
                       disabled={isLobbyVoiceTesting}
-                      className={`px-3 py-1 rounded-xl text-xs font-mono font-medium transition cursor-pointer flex items-center gap-1.5 ${
+                      className={`px-3 py-1 rounded-xl text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
                         isLobbyVoiceTesting
-                          ? 'bg-sky-500 text-slate-950 font-bold animate-pulse'
-                          : 'bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 border border-sky-500/40'
+                          ? 'bg-sky-500 text-white font-bold animate-pulse'
+                          : 'bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-300'
                       }`}
                     >
                       <Mic className="w-3.5 h-3.5" />
-                      <span>{isLobbyVoiceTesting ? 'Listening (Speak Now)...' : 'Test Speech Now'}</span>
+                      <span>{isLobbyVoiceTesting ? 'Listening...' : 'Test Speech Now'}</span>
                     </button>
                   </div>
 
-                  {lobbyVoiceTestTranscript ? (
-                    <div className="p-2 rounded-xl bg-sky-950/40 border border-sky-400/40 text-sky-200 font-mono text-[11px]">
+                  <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden flex border border-slate-200">
+                    <div
+                      className={`h-full transition-all duration-75 rounded-full ${
+                        lobbyMicVolume > 70 ? 'bg-rose-500' : lobbyMicVolume > 30 ? 'bg-emerald-500' : 'bg-sky-500'
+                      }`}
+                      style={{ width: `${Math.max(4, isMicOn ? lobbyMicVolume : 0)}%` }}
+                    />
+                  </div>
+
+                  {lobbyVoiceTestTranscript && (
+                    <div className="p-2 rounded-xl bg-sky-50 border border-sky-300 text-sky-950 font-mono text-[11px]">
                       {lobbyVoiceTestTranscript}
                     </div>
-                  ) : (
-                    <span className="text-slate-400 font-mono text-[11px]">
-                      Click &quot;Test Speech Now&quot; and say e.g. &quot;Hello doctor&quot; to verify your voice is captured and transcribed.
-                    </span>
                   )}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          {/* Right Column: Pre-Join Role Selection & Enter Room Card */}
-          <div className="w-full lg:w-[48%] flex flex-col space-y-6">
+          {/* Right Column: Clean, Contained Pre-Join Card */}
+          <div className="gsap-from-right w-full lg:w-[50%] bg-white rounded-3xl border border-slate-200/90 shadow-xl p-6 sm:p-8 flex flex-col justify-between space-y-5">
             <div>
-              <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-orange-600 font-mono bg-orange-50 px-2.5 py-1 rounded-full border border-orange-200">
+                  Pre-Call Setup
+                </span>
+                <span className="text-xs font-mono text-slate-500">
+                  Room: <strong className="text-slate-900 font-bold">{roomId}</strong>
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-heading mt-2">
                 Ready to join?
               </h1>
-              <p className="text-xs sm:text-sm text-slate-400 mt-1.5">
-                Choose your role to configure real-time sign &amp; speech accessibility.
+              <p className="text-xs sm:text-sm text-slate-500 mt-1 font-sans">
+                Choose your accessibility mode and join the session.
               </p>
             </div>
 
-            {/* Display Name Input */}
+            {/* Field 1: Your Display Name */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider font-mono">
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider font-mono">
                 Your Name
               </label>
               <input
@@ -4568,71 +4477,17 @@ function MeetingRoomContent() {
                 value={lobbyName}
                 onChange={(e) => setLobbyName(e.target.value)}
                 placeholder={displayName || 'Enter your name'}
-                className="w-full px-4 py-3 rounded-2xl bg-[#303134] border border-[#3c4043] text-white font-medium text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition"
+                className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold text-sm focus:outline-none focus:border-orange-500 focus:bg-white shadow-xs transition placeholder-slate-400"
               />
             </div>
 
-            {/* Meeting Biography & Context Profile (Helps AI Understand Conversation) */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider font-mono flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-orange-400" />
-                  <span>Meeting Biography &amp; Topic</span>
-                </label>
-                <span className="text-[10px] text-slate-400 font-mono">AI Context Aware</span>
-              </div>
-              <textarea
-                rows={2}
-                value={meetingContext}
-                onChange={(e) => setMeetingContext(e.target.value)}
-                placeholder="e.g. I am Bhushan, 22. Medical consultation with doctor for fever and headache."
-                className="w-full px-4 py-2.5 rounded-2xl bg-[#303134] border border-[#3c4043] text-white font-medium text-xs focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition resize-none placeholder-slate-500"
-              />
-
-              {/* Quick Preset Context Chips */}
-              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                <button
-                  type="button"
-                  onClick={() => setMeetingContext(`Patient ${lobbyName || displayName}, 22. Consultation with doctor for fever, cold and headache.`)}
-                  className="px-2.5 py-1.5 rounded-xl bg-[#26282b] hover:bg-slate-700 border border-[#3c4043] text-[11px] text-slate-300 font-mono transition cursor-pointer flex items-center gap-1.5"
-                >
-                  <Stethoscope className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Doctor Consultation</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMeetingContext(`Candidate ${lobbyName || displayName}. Software Engineer interview for AI & frontend systems.`)}
-                  className="px-2.5 py-1.5 rounded-xl bg-[#26282b] hover:bg-slate-700 border border-[#3c4043] text-[11px] text-slate-300 font-mono transition cursor-pointer flex items-center gap-1.5"
-                >
-                  <Briefcase className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Job Interview</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMeetingContext(`Student ${lobbyName || displayName}. Discussing college project submission and exam schedule.`)}
-                  className="px-2.5 py-1.5 rounded-xl bg-[#26282b] hover:bg-slate-700 border border-[#3c4043] text-[11px] text-slate-300 font-mono transition cursor-pointer flex items-center gap-1.5"
-                >
-                  <GraduationCap className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Academic Session</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMeetingContext(`${lobbyName || displayName} catching up with family and friends.`)}
-                  className="px-2.5 py-1.5 rounded-xl bg-[#26282b] hover:bg-slate-700 border border-[#3c4043] text-[11px] text-slate-300 font-mono transition cursor-pointer flex items-center gap-1.5"
-                >
-                  <HeartHandshake className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Personal Discussion</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Role Selection Cards */}
-            <div className="space-y-3">
-              <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider font-mono">
-                Choose Your Role in This Call:
+            {/* Field 2: Role Selection (Signer vs Speaker) */}
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider font-mono">
+                Choose Your Role:
               </label>
 
-              <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {/* Role 1: Deaf Signer */}
                 <button
                   type="button"
@@ -4641,45 +4496,31 @@ function MeetingRoomContent() {
                     setAvatarMode('hologram');
                     setIsSignToSpeechActive(true);
                   }}
-                  className={`p-4 rounded-2xl border text-left transition-all cursor-pointer relative ${
+                  className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
                     selectedLobbyRole === 'deaf_signer'
-                      ? 'bg-orange-500/15 border-orange-500 ring-2 ring-orange-500/40'
-                      : 'bg-[#303134]/80 border-[#3c4043] hover:border-slate-500'
+                      ? 'bg-orange-50/80 border-2 border-orange-500 ring-2 ring-orange-500/10 shadow-sm'
+                      : 'bg-slate-50/80 hover:bg-slate-100 border-slate-200'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-orange-500/20 text-orange-400 flex items-center justify-center shrink-0 border border-orange-500/30">
-                        <Hand className="w-5 h-5 text-orange-400" />
-                      </div>
-                      <div>
-                        <div className="text-sm font-bold text-white flex items-center gap-2">
-                          <span>Deaf / Hard-of-Hearing Signer</span>
-                          {selectedLobbyRole === 'deaf_signer' && (
-                            <span className="w-2 h-2 rounded-full bg-orange-500" />
-                          )}
-                        </div>
-                        <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
-                          I communicate using Indian Sign Language (ISL).
-                        </p>
-                      </div>
+                  <div className="flex items-center justify-between">
+                    <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center border border-orange-200">
+                      <Hand className="w-4 h-4 text-orange-600" />
                     </div>
                     {selectedLobbyRole === 'deaf_signer' && (
-                      <Check className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
                     )}
                   </div>
-
-                  <div className="mt-2.5 pt-2.5 border-t border-white/5 flex items-center gap-2 flex-wrap text-[10px] font-mono text-slate-400">
-                    <span className="bg-black/30 px-2 py-0.5 rounded border border-white/10 text-orange-300">
-                      ✓ ISL Camera Sign-to-Speech
-                    </span>
-                    <span className="bg-black/30 px-2 py-0.5 rounded border border-white/10 text-orange-300">
-                      ✓ 3D Sign Interpreter
-                    </span>
-                    <span className="bg-black/30 px-2 py-0.5 rounded border border-white/10 text-orange-300">
-                      ✓ Live Subtitles
-                    </span>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 font-heading">
+                      Deaf Signer
+                    </h4>
+                    <p className="text-[11px] text-slate-500 leading-snug mt-0.5">
+                      I communicate using Indian Sign Language (ISL).
+                    </p>
                   </div>
+                  <span className="text-[10px] font-mono text-orange-700 font-medium">
+                    ✓ ISL Camera Sign-to-Speech
+                  </span>
                 </button>
 
                 {/* Role 2: Hearing Speaker */}
@@ -4690,88 +4531,236 @@ function MeetingRoomContent() {
                     setAvatarMode('3d_avatar');
                     setIsSignToSpeechActive(false);
                   }}
-                  className={`p-4 rounded-2xl border text-left transition-all cursor-pointer relative ${
+                  className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
                     selectedLobbyRole === 'speaking_interviewer'
-                      ? 'bg-sky-500/15 border-sky-400 ring-2 ring-sky-400/40'
-                      : 'bg-[#303134]/80 border-[#3c4043] hover:border-slate-500'
+                      ? 'bg-sky-50/80 border-2 border-sky-500 ring-2 ring-sky-500/10 shadow-sm'
+                      : 'bg-slate-50/80 hover:bg-slate-100 border-slate-200'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0 border border-sky-500/30">
-                        <Mic className="w-5 h-5 text-sky-400" />
-                      </div>
-                      <div>
-                        <div className="text-sm font-bold text-white flex items-center gap-2">
-                          <span>Hearing Speaker / Doctor</span>
-                          {selectedLobbyRole === 'speaking_interviewer' && (
-                            <span className="w-2 h-2 rounded-full bg-sky-400" />
-                          )}
-                        </div>
-                        <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
-                          I communicate using my spoken voice.
-                        </p>
-                      </div>
+                  <div className="flex items-center justify-between">
+                    <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center border border-sky-200">
+                      <Mic className="w-4 h-4 text-sky-600" />
                     </div>
                     {selectedLobbyRole === 'speaking_interviewer' && (
-                      <Check className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
                     )}
                   </div>
-
-                  <div className="mt-2.5 pt-2.5 border-t border-white/5 flex items-center gap-2 flex-wrap text-[10px] font-mono text-slate-400">
-                    <span className="bg-black/30 px-2 py-0.5 rounded border border-white/10 text-sky-300">
-                      ✓ Voice-to-Sign Translation
-                    </span>
-                    <span className="bg-black/30 px-2 py-0.5 rounded border border-white/10 text-sky-300">
-                      ✓ Signs Spoken Aloud via TTS
-                    </span>
-                    <span className="bg-black/30 px-2 py-0.5 rounded border border-white/10 text-sky-300">
-                      ✓ Subtitles
-                    </span>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 font-heading">
+                      Hearing Speaker
+                    </h4>
+                    <p className="text-[11px] text-slate-500 leading-snug mt-0.5">
+                      I communicate using my spoken voice.
+                    </p>
                   </div>
+                  <span className="text-[10px] font-mono text-sky-700 font-medium">
+                    ✓ Real-Time 3D Sign Avatar
+                  </span>
                 </button>
               </div>
             </div>
 
-            {/* Custom AI Key & Model Trigger */}
-            <div className="flex items-center justify-between p-3 rounded-2xl bg-[#303134]/70 border border-[#3c4043] text-xs">
-              <div className="flex items-center gap-2.5">
-                <Sliders className="w-4 h-4 text-orange-400 shrink-0" />
-                <div className="flex flex-col">
-                  <span className="font-semibold text-white">AI Model &amp; Custom API Key</span>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    {customApiKey ? `Custom Key Active (${customModel})` : `Platform Key (${customModel})`}
-                  </span>
-                </div>
-              </div>
+            {/* Field 3: Meeting Context / Topic (Clean Accordion) */}
+            <div className="border border-slate-200/90 rounded-2xl p-3 bg-slate-50/60">
               <button
                 type="button"
-                onClick={() => setShowSettingsModal(true)}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono font-medium border border-slate-700 transition cursor-pointer"
+                onClick={() => setShowLobbyContext(!showLobbyContext)}
+                className="w-full flex items-center justify-between text-xs font-semibold text-slate-700 hover:text-slate-900 cursor-pointer"
               >
-                Configure
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+                  <span>Topic &amp; Biography (Context for AI Translation)</span>
+                </span>
+                <span className="text-orange-600 font-mono text-[11px] font-bold">
+                  {showLobbyContext ? 'Hide' : meetingContext ? 'Edit' : '+ Add'}
+                </span>
               </button>
+
+              {showLobbyContext && (
+                <div className="mt-2.5 space-y-2 animate-in fade-in duration-150">
+                  <textarea
+                    rows={2}
+                    value={meetingContext}
+                    onChange={(e) => setMeetingContext(e.target.value)}
+                    placeholder="e.g. Doctor consultation for fever and headache."
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-900 text-xs focus:outline-none focus:border-orange-500 resize-none shadow-xs"
+                  />
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {[
+                      { label: 'Doctor', text: `Medical consultation with doctor for health checkup.` },
+                      { label: 'Job Interview', text: `Candidate interview for software engineer role.` },
+                      { label: 'Class', text: `Student attending academic lecture and discussion.` },
+                      { label: 'Personal', text: `Casual conversation with family and friends.` },
+                    ].map((item) => (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => setMeetingContext(item.text)}
+                        className="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-[10px] font-mono text-slate-700 shadow-xs cursor-pointer"
+                      >
+                        + {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Join Button */}
-            <button
-              type="button"
-              onClick={handleJoinMeeting}
-              className="w-full py-4 rounded-full bg-orange-500 hover:bg-orange-600 text-white font-bold text-base shadow-xl shadow-orange-500/25 transition-transform hover:scale-[1.02] flex items-center justify-center gap-2.5 cursor-pointer"
-            >
-              <span>
-                {selectedLobbyRole === 'deaf_signer' && lobbyTestedSigns.length > 0
-                  ? `✓ Ready (${lobbyTestedSigns.length} Signs Verified) • Join Meeting Now`
-                  : 'Join Meeting Now'}
-              </span>
-              <ArrowRight className="w-5 h-5" />
-            </button>
+            {/* Field 4: AI Model & Custom Key Setting */}
+            <div className="border border-slate-200/90 rounded-2xl p-3 bg-slate-50/70 hover:bg-slate-50 transition">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center border border-orange-200 shrink-0">
+                    <Sliders className="w-4 h-4 text-orange-600" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <span>AI Model &amp; Custom API Key</span>
+                      {customApiKey ? (
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[9px] font-mono font-bold">
+                          Custom
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 text-[9px] font-mono font-bold">
+                          Default
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-mono">
+                      Active: <strong className="text-slate-800">{customModel}</strong>
+                    </div>
+                  </div>
+                </div>
 
-            <div className="text-center text-[11px] text-slate-400">
-              Direct P2P Encrypted WebRTC Video • Live Indian Sign Language AI
+                <button
+                  type="button"
+                  onClick={() => setShowSettingsModal(true)}
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 text-orange-600 font-bold text-xs shadow-xs transition cursor-pointer"
+                >
+                  Configure
+                </button>
+              </div>
             </div>
+
+            {/* Action Row: Big Join Button */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={handleJoinMeeting}
+                className="w-full py-4 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white font-black text-base shadow-xl shadow-orange-500/25 transition-all hover:scale-[1.01] flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>
+                  {selectedLobbyRole === 'deaf_signer' && lobbyTestedSigns.length > 0
+                    ? `Join Meeting (${lobbyTestedSigns.length} Signs Verified)`
+                    : 'Join Meeting Now'}
+                </span>
+                <ArrowRight className="w-5 h-5" />
+              </button>
+
+              <div className="text-center text-[11px] text-slate-500 font-mono">
+                Direct P2P Encrypted WebRTC Video • Live Indian Sign Language AI
+              </div>
+            </div>
+
           </div>
         </main>
+
+        {/* AI Key & Model Configuration Modal for Lobby */}
+        {showSettingsModal && (
+          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+            <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-2xl max-w-lg w-full text-slate-900 space-y-5 animate-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-orange-50 border border-orange-200 flex items-center justify-center text-orange-600">
+                    <Sliders className="w-5 h-5 text-orange-500" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-base text-slate-900 font-heading">AI Model &amp; API Key Settings</h3>
+                    <p className="text-xs text-slate-500">Bring Your Own Key (BYOK) for custom model translation.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSettingsModal(false)}
+                  className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Custom Gemini API Key */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 font-mono flex items-center justify-between">
+                  <span>Google Gemini API Key</span>
+                  <span className="text-[10px] text-slate-400">Stored safely in local browser</span>
+                </label>
+                <input
+                  type="password"
+                  value={customApiKey}
+                  onChange={(e) => setCustomApiKey(e.target.value)}
+                  placeholder="AIzaSy... (Leave blank to use Platform Key)"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-xs focus:outline-none focus:border-orange-500 focus:bg-white shadow-xs transition"
+                />
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Your custom key will be used for real-time speech-to-ISL and camera sign-to-speech AI sentence synthesis.
+                </p>
+              </div>
+
+              {/* Model Name Selector */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 font-mono">
+                  Select Model Version
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setCustomModel(m)}
+                      className={`py-2 px-2 rounded-xl text-xs font-mono text-center border transition cursor-pointer ${
+                        customModel === m
+                          ? 'bg-orange-50 border-orange-500 text-orange-950 font-bold shadow-xs'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={customModel}
+                  onChange={(e) => setCustomModel(e.target.value)}
+                  placeholder="Or enter custom model name (e.g. gemini-2.5-flash)..."
+                  className="w-full px-4 py-2 mt-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-xs focus:outline-none focus:border-orange-500 focus:bg-white shadow-xs transition"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => saveAiSettings(customApiKey, customModel)}
+                  className="flex-1 py-3 px-4 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs transition shadow-md shadow-orange-500/25 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Save &amp; Apply Settings</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    saveAiSettings('', 'gemini-2.0-flash');
+                    setCustomApiKey('');
+                    setCustomModel('gemini-2.0-flash');
+                  }}
+                  className="py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition cursor-pointer"
+                >
+                  Reset Default
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -4861,19 +4850,8 @@ function MeetingRoomContent() {
           )}
         </div>
 
-        {/* Right: Streamlined Action Pill Group */}
+        {/* Right: Clean Utility & Status Group (Google Meet Minimalist Standard) */}
         <div className="flex items-center gap-2 sm:gap-2.5">
-          {/* QR Code / Direct Scan to Join */}
-          <button
-            type="button"
-            onClick={() => setShowQrInviteModal(true)}
-            className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 transition cursor-pointer active:scale-95"
-            title="Instant QR Code: Mobile participants can scan to join without typing room code"
-          >
-            <QrCode className="w-3.5 h-3.5 text-white" />
-            <span className="hidden md:inline">Scan to Join</span>
-          </button>
-
           {/* Automated Bilingual Clinical / Meeting Minutes Generator */}
           <button
             type="button"
@@ -4890,19 +4868,8 @@ function MeetingRoomContent() {
             )}
           </button>
 
-          {/* Participants Pill */}
-          <button
-            type="button"
-            onClick={() => setShowParticipantList(!showParticipantList)}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-mono text-slate-300 hover:text-white transition cursor-pointer"
-            title="View Participants"
-          >
-            <Users className="w-3.5 h-3.5 text-slate-400" />
-            <span>{1 + remoteParticipants.size}</span>
-          </button>
-
           {/* Meeting Clock / Duration */}
-          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>{formatTime(meetingDurationSec)}</span>
           </div>
@@ -5526,30 +5493,33 @@ function MeetingRoomContent() {
                     </div>
 
                     <div className="flex flex-col items-center">
-                      <span className="text-sm font-bold text-white">{displayName}</span>
-                      <span className="text-[11px] text-slate-400 mt-0.5">
+                      <span className="text-base font-bold text-white tracking-wide" suppressHydrationWarning>{displayName}</span>
+                      <span className="text-xs text-slate-400 mt-1">
                         {cameraError ? cameraError : 'Camera is turned off'}
                       </span>
                     </div>
 
-                    <div className="flex flex-col items-center gap-2 mt-3">
-                      <button
-                        type="button"
-                        onClick={retryCamera}
-                        className="px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs shadow-lg shadow-orange-500/25 transition hover:scale-105 cursor-pointer flex items-center gap-2"
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                        <span>Retry Real Camera</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={startVirtualCamera}
-                        className="text-[11px] text-slate-400 hover:text-slate-200 underline font-mono cursor-pointer transition mt-0.5"
-                        title="Simulate webcam video so two tabs can run video calls on one PC"
-                      >
-                        Testing 2 tabs on 1 PC? Use simulated camera stream
-                      </button>
-                    </div>
+                    {cameraError && (
+                      <div className="flex items-center gap-2 mt-2 bg-slate-900/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-slate-700/80 shadow-lg">
+                        <button
+                          type="button"
+                          onClick={retryCamera}
+                          className="px-3 py-1 rounded-lg bg-orange-500 hover:bg-orange-400 text-white font-semibold text-xs transition cursor-pointer flex items-center gap-1.5"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Retry Camera</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={startVirtualCamera}
+                          className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition cursor-pointer flex items-center gap-1.5"
+                          title="Simulate webcam video for multi-tab testing"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-orange-400" />
+                          <span>Virtual Cam</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -5637,12 +5607,12 @@ function MeetingRoomContent() {
                     onClick={() => setAvatarMode('emojis')}
                     className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
                       avatarMode === 'emojis'
-                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
+                        ? 'bg-orange-500 text-white shadow-xs'
                         : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60'
                     }`}
                   >
-                    <span className="text-xs">🤟</span>
-                    <span>3D Emojis</span>
+                    <Smile className="w-3.5 h-3.5" />
+                    <span>Sign Gestures</span>
                   </button>
                 </div>
 
@@ -5682,29 +5652,29 @@ function MeetingRoomContent() {
                 <span className="text-slate-200 font-semibold flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-orange-400" />
                   {avatarMode === 'hologram'
-                    ? 'ISL HOLOGRAM (DATASET GROUND-TRUTH)'
+                    ? 'ISL Hologram Interpreter'
                     : avatarMode === '3d_avatar'
-                    ? '3D AVATAR (HUMANOID INTERPRETER)'
-                    : '3D SIGN EMOJIS (VOLUMETRIC PBR)'}
+                    ? '3D Humanoid Avatar'
+                    : 'Sign Gesture Expressions'}
                 </span>
 
                 <div className="flex items-center gap-2">
                   <span className="px-2 py-0.5 rounded-full bg-slate-800/80 border border-slate-700/70 text-slate-300 text-[10px] font-medium">
                     {avatarMode === 'hologram'
-                      ? 'Smooth: ON'
+                      ? '60 FPS • Real-time'
                       : avatarMode === '3d_avatar'
-                      ? 'Kinematics: 65-Bone'
-                      : 'Three.js PBR 60FPS'}
+                      ? '65-Bone Kinematics'
+                      : 'WebGL PBR'}
                   </span>
                   {activeToken ? (
                     <span className="px-3 py-0.5 rounded-full bg-orange-500 text-white font-bold text-[11px] shadow-sm animate-pulse">
                       {currentAction?.source === 'fingerspell_letter' || currentAction?.type === 'letter'
-                        ? `SPELLING: [${activeToken.toUpperCase()}]`
-                        : `SIGNING: ${activeToken.toUpperCase()}`}
+                        ? `Spelling: [${activeToken.toUpperCase()}]`
+                        : `Signing: ${activeToken.toUpperCase()}`}
                     </span>
                   ) : (
                     <span className="px-2.5 py-0.5 rounded-full bg-slate-800/60 border border-slate-700/60 text-slate-400 text-[10px]">
-                      Standby (Ready)
+                      Standby
                     </span>
                   )}
                 </div>
@@ -6434,11 +6404,11 @@ function MeetingRoomContent() {
             }`}
             title={
               isSignToSpeechActive
-                ? 'ISL Sign-to-Speech is Active'
-                : 'Turn On ISL Sign-to-Speech'
+                ? 'ISL Camera Tracking is Active'
+                : 'Turn On ISL Camera Tracking'
             }
           >
-            <Hand className="w-5 h-5" />
+            <Activity className="w-5 h-5" />
           </button>
 
           {/* Screen Share Button */}
@@ -6458,7 +6428,7 @@ function MeetingRoomContent() {
           <button
             onClick={() => executeTranslateAndSign('hello')}
             className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer bg-[#3c4043] hover:bg-[#474a4e] text-white"
-            title="Raise Hand / Greet"
+            title="Raise Hand"
           >
             <Hand className="w-5 h-5" />
           </button>
@@ -6473,7 +6443,7 @@ function MeetingRoomContent() {
                   ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/40 ring-2 ring-amber-400/50'
                   : 'bg-[#3c4043] hover:bg-[#474a4e] text-white'
               }`}
-              title="Send 3D Sign Language Emoji Reaction"
+              title="Send 3D Sign Reaction"
             >
               <Smile className="w-5 h-5" />
             </button>
@@ -6530,100 +6500,78 @@ function MeetingRoomContent() {
         </div>
 
         {/* Right: Google Meet Utility Drawers & Options */}
-        <div className="flex items-center gap-1.5 sm:gap-2 min-w-[160px] sm:min-w-[190px] justify-end">
-          {/* AI Key & Model Settings */}
-          <button
-            onClick={() => setShowSettingsModal(true)}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-              customApiKey
-                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-xs'
-                : 'bg-[#3c4043] hover:bg-[#474a4e] text-white'
-            }`}
-            title={customApiKey ? `Custom Model Active (${customModel})` : 'Configure AI Model & API Key'}
-          >
-            <Sliders className="w-4 h-4" />
-          </button>
-
-          {/* Shortcuts & Tests Drawer Toggle */}
-          <button
-            onClick={() => setShowPresetDrawer(!showPresetDrawer)}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-              showPresetDrawer
-                ? 'bg-orange-500 text-white'
-                : 'bg-[#3c4043] hover:bg-[#474a4e] text-white'
-            }`}
-            title="Conversational Shortcuts & Tests"
-          >
-            <Sparkles className="w-4 h-4" />
-          </button>
-
-          {/* 3D Sign Interpreter Companion Toggle */}
-          <button
-            onClick={() => setShowSignCompanion(!showSignCompanion)}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-              showSignCompanion
-                ? 'bg-orange-500 text-white shadow-md'
-                : 'bg-[#3c4043] hover:bg-[#474a4e] text-white'
-            }`}
-            title={showSignCompanion ? 'Hide 3D Sign Avatar' : 'Show 3D Sign Avatar'}
-          >
-            <HandMetal className="w-4 h-4" />
-          </button>
-
-          {/* Meeting Info / Share */}
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-[160px] sm:min-w-[190px] justify-end">
+          {/* 1. Meeting Info / Share (Google Meet "i" button) */}
           <button
             onClick={openShareModal}
-            className="w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer bg-[#3c4043] hover:bg-[#474a4e] text-white"
-            title="Meeting Details & Invite Link"
+            className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer bg-[#3c4043] hover:bg-[#474a4e] text-white"
+            title="Meeting Details & Joining Info"
           >
-            <Share2 className="w-4 h-4" />
+            <Info className="w-5 h-5" />
           </button>
 
-          {/* QR Code Scan to Join */}
-          <button
-            onClick={() => setShowQrInviteModal(true)}
-            className="w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer bg-gradient-to-tr from-orange-500/20 to-amber-500/20 border border-orange-500/40 text-orange-400 hover:text-white hover:bg-orange-500 shadow-sm"
-            title="Display QR Code for Instant Phone Scan to Join"
-          >
-            <QrCode className="w-4 h-4" />
-          </button>
-
-          {/* Participants List Toggle */}
+          {/* 2. Participants List Toggle */}
           <button
             type="button"
             onClick={() => setShowParticipantList(!showParticipantList)}
-            className={`relative w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+            className={`relative w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer ${
               showParticipantList
-                ? 'bg-orange-500 text-white'
+                ? 'bg-orange-500 text-white shadow-md'
                 : 'bg-[#3c4043] hover:bg-[#474a4e] text-white'
             }`}
             title="People in call"
           >
-            <Users className="w-4 h-4" />
+            <Users className="w-5 h-5" />
             <span className="absolute -top-1 -right-1 bg-slate-700 text-slate-200 font-mono text-[10px] w-4 h-4 rounded-full flex items-center justify-center border border-slate-900">
               {1 + remoteParticipants.size}
             </span>
           </button>
 
-          {/* In-Call Chat Drawer Toggle */}
+          {/* 3. In-Call Chat Drawer Toggle */}
           <button
             onClick={() => {
               setShowChatDrawer(!showChatDrawer);
               setUnreadChatCount(0);
             }}
-            className={`relative w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+            className={`relative w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer ${
               showChatDrawer
-                ? 'bg-orange-500 text-white'
+                ? 'bg-orange-500 text-white shadow-md'
                 : 'bg-[#3c4043] hover:bg-[#474a4e] text-white'
             }`}
             title="Chat with everyone"
           >
-            <MessageSquare className="w-4 h-4" />
+            <MessageSquare className="w-5 h-5" />
             {unreadChatCount > 0 && !showChatDrawer && (
               <span className="absolute -top-1 -right-1 bg-orange-500 text-white font-extrabold text-[10px] w-4 h-4 rounded-full flex items-center justify-center animate-bounce">
                 {unreadChatCount}
               </span>
             )}
+          </button>
+
+          {/* 4. 3D Sign Interpreter Companion Panel Toggle (Activities) */}
+          <button
+            onClick={() => setShowSignCompanion(!showSignCompanion)}
+            className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+              showSignCompanion
+                ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25 ring-2 ring-orange-400/40'
+                : 'bg-[#3c4043] hover:bg-[#474a4e] text-white'
+            }`}
+            title={showSignCompanion ? 'Hide 3D Sign Avatar' : 'Show 3D Sign Avatar'}
+          >
+            <HandMetal className="w-5 h-5" />
+          </button>
+
+          {/* 5. AI Key & Settings */}
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+              customApiKey
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                : 'bg-[#3c4043] hover:bg-[#474a4e] text-white'
+            }`}
+            title={customApiKey ? `Custom Model Active (${customModel})` : 'AI Settings & API Key'}
+          >
+            <Sliders className="w-4 h-4" />
           </button>
         </div>
       </footer>
@@ -7745,7 +7693,9 @@ export default function MeetingRoomPage() {
         </div>
       }
     >
-      <MeetingRoomContent />
+      <AuthGuard featureName="Accessible Video Room">
+        <MeetingRoomContent />
+      </AuthGuard>
     </React.Suspense>
   );
 }

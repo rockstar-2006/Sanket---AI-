@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
+import { AuthGuard } from '@/components/auth/AuthGuard';
 import { useAuth } from '@/context/AuthContext';
 import { normalizeRoomCode } from '@/types';
 import {
@@ -71,7 +72,8 @@ export default function GeneralJoinPage() {
     <div className="min-h-screen flex flex-col bg-slate-50 bg-grid-lines text-slate-900">
       <Navbar />
 
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <AuthGuard featureName="Join Video Meeting">
+        <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {/* Page Title */}
         <div className="text-center max-w-xl mx-auto mb-8 space-y-2">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-700 font-bold text-xs uppercase tracking-wider shadow-xs">
@@ -245,6 +247,7 @@ export default function GeneralJoinPage() {
           </form>
         </div>
       </main>
+      </AuthGuard>
 
       <Footer />
     </div>

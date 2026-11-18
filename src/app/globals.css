@@ -124,3 +124,86 @@ html {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Smooth Hardware-Accelerated Page & Component Transitions */
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translate3d(-40px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translate3d(40px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes scaleUp {
+  from {
+    opacity: 0;
+    transform: scale3d(0.92, 0.92, 1) translate3d(0, 15px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: scale3d(1, 1, 1) translate3d(0, 0, 0);
+  }
+}
+
+@keyframes textReveal {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translate3d(0, 20px, 0);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.gsap-from-left {
+  animation: slideInLeft 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+.gsap-from-right {
+  animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+.gsap-scale {
+  animation: scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+.gsap-text-reveal {
+  animation: textReveal 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
+}
+
+/* Accessibility: disable heavy motion if user prefers reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-float,
+  .animate-float-reverse,
+  .animate-spin-slow,
+  .animate-pulse-glow,
+  .page-enter-active,
+  .gsap-from-left,
+  .gsap-from-right,
+  .gsap-scale,
+  .gsap-text-reveal {
+    animation: none !important;
+    transition: none !important;
+  }
+}

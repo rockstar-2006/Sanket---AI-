@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -67,6 +67,13 @@ export default function LandingPage() {
   const { user } = useAuth();
   const [quickRoomCode, setQuickRoomCode] = useState('');
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+
+  // Background prefetch routes so clicking them renders instantaneously with 0ms lag
+  useEffect(() => {
+    router.prefetch('/consultation/create');
+    router.prefetch('/pricing');
+    router.prefetch('/call-center');
+  }, [router]);
 
   const handleStartSession = () => {
     router.push('/consultation/create');

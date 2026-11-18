@@ -264,6 +264,7 @@ nextApp.prepare().then(() => {
   let activeMediaEncoding = 'audio/x-raw';
   let callerAudioBuffer = [];
   let consecutiveSilenceChunks = 0;
+  let lastTranscriptionTime = 0;
   let silenceTimer = null;
   let isTranscribing = false;
 
@@ -325,9 +326,8 @@ nextApp.prepare().then(() => {
     const availableModels = await fetchValidGeminiModels(apiKey);
     const userChosenModel = userCustomConfig?.model?.trim();
     const candidateModels = Array.from(new Set([
-      userChosenModel,
+      (userChosenModel && userChosenModel.startsWith('gemini')) ? userChosenModel : null,
       ...availableModels,
-      'gemini-3.8-flash',
       'gemini-2.5-flash',
       'gemini-1.5-flash'
     ].filter(Boolean)));
@@ -530,8 +530,21 @@ nextApp.prepare().then(() => {
     }
   }
 
+  let lastDownlinkText = '';
+  let lastDownlinkTime = 0;
+
   async function sendAgentVoiceDownlink(text) {
     if (!text || !text.trim()) return;
+    const cleanText = text.trim();
+
+    // Prevent duplicate voice synthesis calls if fired by both WebSocket & HTTP API
+    if (cleanText === lastDownlinkText && (Date.now() - lastDownlinkTime) < 3000) {
+      console.log(`[Downlink Telephony] Suppressed duplicate voice synthesis request: "${cleanText}"`);
+      return;
+    }
+    lastDownlinkText = cleanText;
+    lastDownlinkTime = Date.now();
+
     if (!activeTelephonyWs || activeTelephonyWs.readyState !== 1 || !activeStreamSid) {
       console.log('[Downlink Telephony] Telephony audio downlink idle (no active phone stream connected)');
       return;
@@ -657,14 +670,16 @@ nextApp.prepare().then(() => {
               console.log(`[Exotel Audio Stream] Accumulating caller voice: ${totalBytes} bytes (~${(totalBytes / 16000).toFixed(1)}s, RMS: ${Math.round(rms)})...`);
             }
 
-            // Condition 1: Caller paused after speaking (>= 400ms silence and at least ~0.5s of voice)
-            const hasEnoughVoice = totalBytes >= 8000;
-            const callerFinishedSpeaking = hasEnoughVoice && consecutiveSilenceChunks >= 20;
+            // Condition 1: Caller paused after speaking (>= 500ms silence and at least ~1.0s of voice)
+            const hasEnoughVoice = totalBytes >= 16000;
+            const callerFinishedSpeaking = hasEnoughVoice && consecutiveSilenceChunks >= 25;
 
-            // Condition 2: Caller has been speaking continuously for ~1.5 seconds (24000 bytes)
-            const speechBufferFull = totalBytes >= 24000;
+            // Condition 2: Caller has been speaking continuously for ~2.2 seconds (35000 bytes)
+            const speechBufferFull = totalBytes >= 35000;
+            const cooldownPassed = (Date.now() - lastTranscriptionTime) >= 1500;
 
-            if ((callerFinishedSpeaking || speechBufferFull) && !isTranscribing) {
+            if ((callerFinishedSpeaking || speechBufferFull) && !isTranscribing && cooldownPassed) {
+              lastTranscriptionTime = Date.now();
               const toProcess = callerAudioBuffer;
               callerAudioBuffer = [];
               consecutiveSilenceChunks = 0;

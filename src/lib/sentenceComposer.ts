@@ -305,32 +305,75 @@ export function composeContextualSentence(
     };
   }
 
-  // 3. Domain Step-Specific Precise Rules
+  // 3. Prioritize Most Recent Confirmed Token (from right to left)
+  // If this is a real phone call with caller context, prioritize true semantic translation over scripted demo steps
+  const isRealPhoneCall = Boolean(lastCallerMessage && lastCallerMessage.trim().length > 0);
   const primaryToken = upperTokens[upperTokens.length - 1];
   const domain = CONTEXT_KNOWLEDGE_GRAPH[scenarioId] || CONTEXT_KNOWLEDGE_GRAPH['daily'];
-  const stepRules = domain[dialogueStep];
 
-  if (stepRules) {
+  // Only apply scripted scenario steps if this is an explicitly simulated demo with NO real caller message
+  if (!isRealPhoneCall && domain[dialogueStep]) {
+    const stepRules = domain[dialogueStep];
+    // Check primary (most recent) token first for exact match
     for (const [key, sentence] of Object.entries(stepRules)) {
-      if (primaryToken.includes(key) || upperTokens.some((t) => t.includes(key))) {
+      if (primaryToken === key) {
         return {
           sentence,
           source: 'contextual-template',
           intent: key,
-          confidence: 0.98,
+          confidence: 0.99,
+        };
+      }
+    }
+    // Then check full tokens
+    for (const [key, sentence] of Object.entries(stepRules)) {
+      if (upperTokens.includes(key)) {
+        return {
+          sentence,
+          source: 'contextual-template',
+          intent: key,
+          confidence: 0.95,
         };
       }
     }
   }
 
-  // 4. Domain-level Fallback Rules
+  // 4. Semantic Gestures Dictionary (Exact matches prioritized)
+  // Check exact match for primary (most recent) token first
   for (const [key, sentence] of Object.entries(domain.defaultTokenMap)) {
-    if (primaryToken.includes(key) || upperTokens.some((t) => t.includes(key))) {
+    if (primaryToken === key) {
       return {
         sentence,
         source: 'contextual-template',
         intent: key,
-        confidence: 0.92,
+        confidence: 0.98,
+      };
+    }
+  }
+
+  // Then check other tokens in reverse chronological order
+  for (let i = upperTokens.length - 1; i >= 0; i--) {
+    const tok = upperTokens[i];
+    for (const [key, sentence] of Object.entries(domain.defaultTokenMap)) {
+      if (tok === key) {
+        return {
+          sentence,
+          source: 'contextual-template',
+          intent: key,
+          confidence: 0.95,
+        };
+      }
+    }
+  }
+
+  // Fallback substring search (avoiding 'GOOD' matching 'GOOD NIGHT')
+  for (const [key, sentence] of Object.entries(domain.defaultTokenMap)) {
+    if (key.length > 3 && primaryToken.includes(key)) {
+      return {
+        sentence,
+        source: 'contextual-template',
+        intent: key,
+        confidence: 0.90,
       };
     }
   }

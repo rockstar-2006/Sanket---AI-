@@ -1,206 +1,405 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { Sparkles, ArrowRight, User, LogOut, Video, Menu, X, Download } from 'lucide-react';
+import { useWallet } from '@/context/WalletContext';
+import { 
+  Video, 
+  Menu, 
+  X, 
+  Download, 
+  Zap, 
+  Sparkles, 
+  User, 
+  LogOut, 
+  PhoneCall, 
+  Compass,
+  HelpCircle,
+  Laptop,
+  CheckCircle2,
+  ChevronDown,
+  Layers,
+  ArrowRight
+} from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const { user, profile, logout } = useAuth();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { credits, openRechargeModal } = useWallet();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const menuContainerRef = useRef<HTMLDivElement>(null);
+
+  // Close profile dropdown or expanded menu on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setProfileDropdownOpen(false);
+      }
+      if (menuOpen && menuContainerRef.current && !menuContainerRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
 
   return (
     <header className="sticky top-4 z-50 w-full px-4 flex flex-col items-center pointer-events-none">
       
-      {/* Floating Capsule Dock Container */}
-      <div className="pointer-events-auto bg-slate-900/95 text-white backdrop-blur-xl border border-slate-800 shadow-2xl rounded-full p-2 pl-3 pr-3 flex items-center justify-between gap-3 sm:gap-6 w-full sm:w-auto max-w-fit transition-all duration-300">
+      {/* Unified Capsule that seamlessly morphs into the expanded menu container */}
+      <div 
+        ref={menuContainerRef}
+        className={`pointer-events-auto bg-slate-900 text-white border border-slate-800 shadow-2xl transition-all duration-300 w-full max-w-4xl ${
+          menuOpen ? 'rounded-3xl p-5 sm:p-7 space-y-6' : 'rounded-full px-4 sm:px-6 py-2'
+        }`}
+      >
         
-        {/* Left Circular White Logo Pill */}
-        <Link href="/" className="flex items-center gap-2.5 group shrink-0">
-          <div className="w-10 h-10 rounded-full bg-white text-slate-900 flex items-center justify-center font-black shadow-md group-hover:scale-105 transition-transform">
-            <Video className="w-5 h-5 text-orange-500" />
-          </div>
-          <span className="font-extrabold text-base text-white tracking-tight pr-1">
-            Sanket<span className="w-1.5 h-1.5 rounded-full bg-orange-500 ml-0.5 inline-block" />
-          </span>
-        </Link>
+        {/* Top Header Row (Always visible, seamlessly converts) */}
+        <div className="flex items-center justify-between gap-3 sm:gap-6 w-full">
+          
+          {/* Left: Brand Logo */}
+          <Link 
+            href="/" 
+            onClick={() => setMenuOpen(false)}
+            className="flex items-center gap-2.5 group shrink-0"
+          >
+            <div className="w-8 h-8 rounded-full bg-white text-slate-900 flex items-center justify-center font-black shadow-md group-hover:scale-105 transition-transform">
+              <Video className="w-4 h-4 text-orange-500" />
+            </div>
+            <span className="font-extrabold text-sm sm:text-base text-white tracking-tight">
+              Sanket<span className="w-1.5 h-1.5 rounded-full bg-orange-500 ml-0.5 inline-block" />
+            </span>
+          </Link>
 
-        {/* Center Desktop Navigation Links */}
-        <nav className="hidden lg:flex items-center gap-6 text-xs font-semibold text-slate-300">
-          <Link href="/" className="text-white hover:text-orange-400 transition">
-            Home
-          </Link>
-          <Link href="/#features" className="hover:text-orange-400 transition">
-            Features
-          </Link>
-          <Link href="/#how-it-works" className="hover:text-orange-400 transition">
-            How It Works
-          </Link>
-          <Link href="/call-center" className="text-orange-400 hover:text-orange-300 transition flex items-center gap-1.5 font-bold">
-            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse inline-block"></span>
-            <span>Telecom Relay</span>
-          </Link>
-          <Link href="/download" className="text-slate-300 hover:text-white transition">
-            Download
-          </Link>
-          {user && (
-            <Link href="/dashboard" className="hover:text-orange-400 transition">
-              Dashboard
-            </Link>
+          {/* Center Links (Visible when collapsed on desktop) */}
+          {!menuOpen && (
+            <nav className="hidden md:flex items-center gap-6 text-xs font-semibold text-slate-300">
+              <Link 
+                href="/" 
+                prefetch={true}
+                className="hover:text-white transition"
+              >
+                Home
+              </Link>
+              <Link 
+                href="/call-center" 
+                prefetch={true}
+                className="hover:text-white transition flex items-center gap-1.5 text-orange-400 font-bold"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Telecom Relay</span>
+              </Link>
+              <Link 
+                href="/consultation/create" 
+                prefetch={true}
+                className="hover:text-white transition"
+              >
+                Meetings
+              </Link>
+              <Link 
+                href="/pricing" 
+                prefetch={true}
+                className="hover:text-white transition"
+              >
+                Pricing
+              </Link>
+            </nav>
           )}
-        </nav>
 
-        {/* Right Action Buttons */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={() => {
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new Event('open-pwa-install'));
-              }
-            }}
-            title="Install Sanket AI as Desktop or Mobile App"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 border border-orange-500/30 transition shadow-sm"
-          >
-            <Download className="w-3.5 h-3.5 text-orange-400" />
-            <span>Install App</span>
-          </button>
+          {/* Right Action Controls */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            
+            {/* Subtle Credit Balance Chip */}
+            <button
+              onClick={() => openRechargeModal()}
+              title="Account Balance - Click to manage"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+            >
+              <span className="text-slate-400 text-[11px] hidden sm:inline">Credits:</span>
+              <span className="font-bold text-white font-mono">{credits}</span>
+              <span className="w-4 h-4 rounded-full bg-orange-500/20 text-orange-400 font-bold text-[10px] flex items-center justify-center border border-orange-500/30 ml-0.5">
+                +
+              </span>
+            </button>
 
-          <Link
-            href="/consultation/join"
-            className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs font-bold text-slate-200 hover:text-white hover:bg-slate-800 border border-slate-700/80 transition"
-          >
-            Join Call
-          </Link>
+            {/* User Profile or Sign In */}
+            {user ? (
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                  className="flex items-center gap-1.5 p-1 rounded-full hover:bg-slate-800 transition cursor-pointer"
+                  title={user.email || 'Account'}
+                >
+                  <div className="w-7 h-7 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-xs shadow-sm overflow-hidden">
+                    {profile?.photoURL ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={profile.photoURL} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      (profile?.displayName || user.email || 'U').charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <ChevronDown className="w-3 h-3 text-slate-400 hidden sm:block" />
+                </button>
 
-          {user ? (
-            <>
-              <Link
-                href="/consultation/create"
-                className="flex items-center gap-1.5 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs font-extrabold bg-white text-slate-900 hover:bg-slate-100 shadow-md transition"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-orange-500" />
-                <span>New Call</span>
-              </Link>
-
-              <Link href="/profile" className="hidden sm:flex items-center gap-2 group">
-                <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-orange-400 text-xs overflow-hidden">
-                  {profile?.photoURL ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={profile.photoURL} alt={profile.displayName || ''} className="w-full h-full object-cover" />
-                  ) : (
-                    (profile?.displayName || user.email || 'U').charAt(0).toUpperCase()
-                  )}
-                </div>
-              </Link>
-
-              <button
-                onClick={logout}
-                title="Sign Out"
-                className="hidden sm:block p-2 text-slate-400 hover:text-rose-400 rounded-full hover:bg-slate-800 transition"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            </>
-          ) : (
-            <div className="flex items-center gap-2">
+                {/* Profile Dropdown */}
+                {profileDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-2 text-xs text-slate-300 space-y-1 animate-in fade-in zoom-in-95 duration-150 z-50">
+                    <div className="px-3 py-2 border-b border-slate-800 text-[11px] text-slate-400 truncate">
+                      {user.email}
+                    </div>
+                    <Link
+                      href="/dashboard"
+                      onClick={() => setProfileDropdownOpen(false)}
+                      className="block px-3 py-2 rounded-xl hover:bg-slate-800 hover:text-white transition"
+                    >
+                      Dashboard
+                    </Link>
+                    <Link
+                      href="/profile"
+                      onClick={() => setProfileDropdownOpen(false)}
+                      className="block px-3 py-2 rounded-xl hover:bg-slate-800 hover:text-white transition"
+                    >
+                      Profile Settings
+                    </Link>
+                    <button
+                      onClick={() => {
+                        setProfileDropdownOpen(false);
+                        logout();
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-rose-500/10 text-rose-400 transition flex items-center justify-between cursor-pointer"
+                    >
+                      <span>Sign Out</span>
+                      <LogOut className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
               <Link
                 href="/auth/login"
-                className="hidden sm:inline-block px-3.5 py-2 rounded-full text-xs font-bold text-slate-300 hover:text-white transition"
+                className="hidden sm:inline-block px-3.5 py-1.5 rounded-full text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition"
               >
                 Sign In
               </Link>
+            )}
 
+            {/* Quick Call Action (When Collapsed) */}
+            {!menuOpen && (
               <Link
                 href="/consultation/create"
-                className="px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs font-extrabold bg-white text-slate-900 hover:bg-slate-100 shadow-md flex items-center gap-1.5 transition"
+                className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-white text-slate-900 hover:bg-slate-100 transition shadow-sm"
               >
-                <span>Start Call</span>
-                <ArrowRight className="w-3.5 h-3.5 text-orange-500" />
-              </Link>
-            </div>
-          )}
-
-          {/* Mobile Hamburger Button */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="lg:hidden p-2 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition"
-          >
-            {mobileMenuOpen ? <X className="w-5 h-5 text-orange-400" /> : <Menu className="w-5 h-5" />}
-          </button>
-        </div>
-
-      </div>
-
-      {/* Mobile Drawer Dropdown Menu */}
-      {mobileMenuOpen && (
-        <div className="pointer-events-auto mt-3 w-full max-w-sm rounded-3xl bg-slate-900/98 text-white border border-slate-800 shadow-2xl p-5 space-y-4 backdrop-blur-2xl">
-          <div className="flex flex-col space-y-3 font-semibold text-sm">
-            <Link onClick={() => setMobileMenuOpen(false)} href="/" className="px-3 py-2 rounded-xl hover:bg-slate-800 transition">
-              Home
-            </Link>
-            <Link onClick={() => setMobileMenuOpen(false)} href="/#features" className="px-3 py-2 rounded-xl hover:bg-slate-800 transition">
-              Features
-            </Link>
-            <Link onClick={() => setMobileMenuOpen(false)} href="/#solutions" className="px-3 py-2 rounded-xl hover:bg-slate-800 transition">
-              Solutions
-            </Link>
-            <Link onClick={() => setMobileMenuOpen(false)} href="/#how-it-works" className="px-3 py-2 rounded-xl hover:bg-slate-800 transition">
-              How It Works
-            </Link>
-            <Link onClick={() => setMobileMenuOpen(false)} href="/download" className="px-3 py-2 rounded-xl text-orange-400 font-bold hover:bg-slate-800 transition flex items-center justify-between">
-              <span>Download Desktop & Mobile App</span>
-              <span className="text-[10px] uppercase font-black px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300">New</span>
-            </Link>
-            <Link onClick={() => setMobileMenuOpen(false)} href="/call-center" className="px-3 py-2 rounded-xl text-emerald-400 font-extrabold hover:bg-slate-800 transition flex items-center justify-between">
-              <span>📞 BPO Call Center (Deaf Agent)</span>
-              <span className="text-[10px] uppercase font-black px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 animate-pulse">Live</span>
-            </Link>
-            <Link onClick={() => setMobileMenuOpen(false)} href="/#faq" className="px-3 py-2 rounded-xl hover:bg-slate-800 transition">
-              Help
-            </Link>
-            <Link onClick={() => setMobileMenuOpen(false)} href="/consultation/join" className="px-3 py-2 rounded-xl bg-slate-800 text-cyan-300 font-bold transition flex items-center justify-between">
-              <span>Join Call with Code/Link</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800">Enter</span>
-            </Link>
-            <Link onClick={() => setMobileMenuOpen(false)} href="/consultation/create" className="px-3 py-2 rounded-xl bg-orange-500/20 text-orange-400 font-bold transition flex items-center justify-between">
-              <span>Start New Call</span>
-              <Sparkles className="w-3.5 h-3.5 text-orange-400" />
-            </Link>
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                if (typeof window !== 'undefined') {
-                  window.dispatchEvent(new Event('open-pwa-install'));
-                }
-              }}
-              className="w-full text-left px-3 py-2.5 rounded-xl bg-gradient-to-r from-orange-500/20 to-amber-500/20 border border-orange-500/40 text-orange-300 font-bold transition flex items-center justify-between shadow-sm"
-            >
-              <div className="flex items-center gap-2">
-                <Download className="w-4 h-4 text-orange-400" />
-                <span>Install Sanket AI App</span>
-              </div>
-              <span className="text-[10px] uppercase font-black px-1.5 py-0.5 rounded bg-orange-500/30 text-orange-200">
-                PWA
-              </span>
-            </button>
-            {user && (
-              <Link onClick={() => setMobileMenuOpen(false)} href="/dashboard" className="px-3 py-2 rounded-xl bg-slate-800/60 text-slate-200 font-bold transition">
-                Dashboard
+                <span>Start</span>
               </Link>
             )}
+
+            {/* Unified Menu Toggle Button */}
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="p-1.5 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              aria-label={menuOpen ? 'Close Menu' : 'Open Menu'}
+              title={menuOpen ? 'Close' : 'Menu'}
+            >
+              {menuOpen ? <X className="w-5 h-5 text-orange-400" /> : <Menu className="w-5 h-5" />}
+            </button>
+
           </div>
 
-          {user && (
-            <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-              <span className="truncate max-w-[180px]">{user.email}</span>
-              <button onClick={logout} className="text-rose-400 font-bold hover:underline">
-                Sign Out
-              </button>
-            </div>
-          )}
         </div>
-      )}
+
+        {/* ─── Expanded Menu Body (Clean, perfectly fills the space inside the same container) ─── */}
+        {menuOpen && (
+          <div className="space-y-6 pt-2 animate-in fade-in duration-200">
+            
+            {/* Primary Navigation Cards */}
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 font-mono block mb-3">
+                Core Applications
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                
+                <Link
+                  href="/"
+                  prefetch={true}
+                  onClick={() => setMenuOpen(false)}
+                  className="p-4 rounded-2xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 transition flex flex-col justify-between group"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-orange-500/15 border border-orange-500/30 text-orange-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                    <Compass className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-white flex items-center justify-between">
+                      <span>Home</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+                    </h4>
+                    <p className="text-[11px] text-slate-300 mt-0.5">Platform overview &amp; introduction</p>
+                  </div>
+                </Link>
+
+                <Link
+                  href="/call-center"
+                  prefetch={true}
+                  onClick={() => setMenuOpen(false)}
+                  className="p-4 rounded-2xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 transition flex flex-col justify-between group"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                    <PhoneCall className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-white flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <span>Telecom Relay</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      </span>
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+                    </h4>
+                    <p className="text-[11px] text-slate-300 mt-0.5">Live cellular phone call bridge</p>
+                  </div>
+                </Link>
+
+                <Link
+                  href="/consultation/create"
+                  prefetch={true}
+                  onClick={() => setMenuOpen(false)}
+                  className="p-4 rounded-2xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 transition flex flex-col justify-between group"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                    <Video className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-white flex items-center justify-between">
+                      <span>New Meeting</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+                    </h4>
+                    <p className="text-[11px] text-slate-300 mt-0.5">3D Sign avatar &amp; STT subtitles</p>
+                  </div>
+                </Link>
+
+                <Link
+                  href="/consultation/join"
+                  prefetch={true}
+                  onClick={() => setMenuOpen(false)}
+                  className="p-4 rounded-2xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 transition flex flex-col justify-between group"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-white flex items-center justify-between">
+                      <span>Join Call</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+                    </h4>
+                    <p className="text-[11px] text-slate-300 mt-0.5">Enter meeting room with code</p>
+                  </div>
+                </Link>
+
+              </div>
+            </div>
+
+            {/* Secondary Sections & Resources */}
+            <div className="pt-4 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              
+              <Link
+                href="/pricing"
+                prefetch={true}
+                onClick={() => setMenuOpen(false)}
+                className="p-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 transition flex items-center justify-between text-white border border-slate-700"
+              >
+                <div>
+                  <span className="font-bold block text-sm">Pricing &amp; Balance</span>
+                  <span className="text-[11px] text-slate-300">Plans from ₹29 with UPI</span>
+                </div>
+                <span className="text-xs font-mono text-orange-400 font-bold">&rarr;</span>
+              </Link>
+
+              <Link
+                href="/download"
+                onClick={() => setMenuOpen(false)}
+                className="p-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 transition flex items-center justify-between text-white border border-slate-700"
+              >
+                <div>
+                  <span className="font-bold block text-sm">Download App</span>
+                  <span className="text-[11px] text-slate-300">Desktop &amp; Mobile PWA</span>
+                </div>
+                <Laptop className="w-4 h-4 text-slate-400" />
+              </Link>
+
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new Event('open-pwa-install'));
+                  }
+                }}
+                className="p-3.5 rounded-2xl bg-orange-500/15 hover:bg-orange-500/25 text-orange-400 border border-orange-500/30 transition flex items-center justify-between text-left cursor-pointer"
+              >
+                <div>
+                  <span className="font-bold block text-sm">Install PWA</span>
+                  <span className="text-[11px] text-orange-300">Run as native offline app</span>
+                </div>
+                <Download className="w-4 h-4 text-orange-400" />
+              </button>
+
+            </div>
+
+            {/* Quick Informational Links Row */}
+            <div className="pt-2 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+              <div className="flex items-center gap-4 flex-wrap">
+                <Link 
+                  href="/#features" 
+                  onClick={() => setMenuOpen(false)}
+                  className="hover:text-white transition"
+                >
+                  Key Features
+                </Link>
+                <Link 
+                  href="/#how-it-works" 
+                  onClick={() => setMenuOpen(false)}
+                  className="hover:text-white transition"
+                >
+                  How It Works
+                </Link>
+                <Link 
+                  href="/#faq" 
+                  onClick={() => setMenuOpen(false)}
+                  className="hover:text-white transition"
+                >
+                  FAQ &amp; Help
+                </Link>
+              </div>
+
+              {user ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] text-slate-500 font-mono truncate max-w-[160px]">{user.email}</span>
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      logout();
+                    }}
+                    className="text-rose-400 font-bold hover:underline cursor-pointer"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              ) : (
+                <Link
+                  href="/auth/login"
+                  onClick={() => setMenuOpen(false)}
+                  className="text-orange-400 font-bold hover:underline"
+                >
+                  Sign In to Account &rarr;
+                </Link>
+              )}
+            </div>
+
+          </div>
+        )}
+
+      </div>
 
     </header>
   );
 };
+

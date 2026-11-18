@@ -100,12 +100,20 @@ export async function POST(req: NextRequest) {
     let payload: Record<string, any> = {};
 
     if (contentType.includes('application/json')) {
-      payload = await req.json();
+      try {
+        payload = await req.json();
+      } catch {
+        payload = {};
+      }
     } else {
-      const formData = await req.formData();
-      formData.forEach((value, key) => {
-        payload[key] = value.toString();
-      });
+      try {
+        const formData = await req.formData();
+        formData.forEach((value, key) => {
+          payload[key] = value.toString();
+        });
+      } catch {
+        payload = {};
+      }
     }
 
     const {

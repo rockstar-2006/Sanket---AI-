@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Heart, ShieldCheck, Lock, Sparkles, Video } from 'lucide-react';
+import { Heart, ShieldCheck, Lock, Sparkles, Video, Zap, Download } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
@@ -22,11 +22,22 @@ export const Footer: React.FC = () => {
           <div>
             <h4 className="text-slate-900 font-bold text-sm mb-4">Meeting Solutions</h4>
             <ul className="space-y-2.5 text-sm text-slate-600">
-              <li><Link href="/download" className="text-orange-600 font-bold hover:underline flex items-center gap-1.5"><span>⚡ Download Desktop & Mobile App</span></Link></li>
-              <li><Link href="/#solutions" className="hover:text-orange-500 transition">Job & Technical Interviews</Link></li>
+              <li>
+                <Link href="/download" className="text-orange-600 font-bold hover:underline flex items-center gap-1.5">
+                  <Download className="w-3.5 h-3.5 text-orange-500" />
+                  <span>Download Desktop &amp; Mobile App</span>
+                </Link>
+              </li>
+              <li>
+                <Link href="/pricing" className="text-cyan-700 font-semibold hover:underline flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-cyan-600" />
+                  <span>Credits &amp; Pricing</span>
+                </Link>
+              </li>
+              <li><Link href="/call-center" className="hover:text-orange-500 transition">Voice Telecom Relay</Link></li>
+              <li><Link href="/#solutions" className="hover:text-orange-500 transition">Job &amp; Technical Interviews</Link></li>
               <li><Link href="/#solutions" className="hover:text-orange-500 transition">Telemedicine Consultations</Link></li>
-              <li><Link href="/#solutions" className="hover:text-orange-500 transition">Academic Viva & Campus Placements</Link></li>
-              <li><Link href="/#solutions" className="hover:text-orange-500 transition">Official Verification Calls</Link></li>
+              <li><Link href="/#solutions" className="hover:text-orange-500 transition">Academic Viva &amp; Placements</Link></li>
             </ul>
           </div>
 

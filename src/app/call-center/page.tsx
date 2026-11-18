@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { io, Socket } from 'socket.io-client';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
+import { AuthGuard } from '@/components/auth/AuthGuard';
+import { useWallet } from '@/context/WalletContext';
 import { 
   Phone, 
   PhoneCall, 
@@ -42,7 +44,8 @@ import {
   Play,
   Wand2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Type
 } from 'lucide-react';
 import { 
   ISLCameraRecognizerEngine, 
@@ -120,7 +123,7 @@ interface DemoScenario {
 const PRESET_SCENARIOS: DemoScenario[] = [
   {
     id: 'daily',
-    title: '💬 Daily Chat with Friends & Family',
+    title: 'Daily Chat with Friends & Family',
     callerName: 'Rahul (Friend)',
     callerNumber: '+91 98450 12890',
     category: 'Daily Casual Life & Social Communication',
@@ -189,6 +192,8 @@ const PRESET_SCENARIOS: DemoScenario[] = [
 ];
 
 export default function CallCenterPage() {
+  const { credits, deductCredits, openRechargeModal } = useWallet();
+
   // Call State
   const [callStatus, setCallStatus] = useState<'idle' | 'ringing' | 'connected' | 'ended'>('idle');
   const [activeCaller, setActiveCaller] = useState<{ name: string; number: string }>({
@@ -322,11 +327,21 @@ export default function CallCenterPage() {
     }
   }, [transcripts]);
 
-  // Call duration counter
+  // Call duration counter & real-time credit consumption (1 credit per 10s of active relay)
   useEffect(() => {
     if (callStatus === 'connected') {
       timerRef.current = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
+        setCallDuration((prev) => {
+          const nextSec = prev + 1;
+          if (nextSec > 0 && nextSec % 10 === 0) {
+            const hasCredits = deductCredits(1, 'Telecom Relay Call (10s usage)');
+            if (!hasCredits) {
+              handleEndCall();
+              openRechargeModal();
+            }
+          }
+          return nextSec;
+        });
       }, 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -394,7 +409,10 @@ export default function CallCenterPage() {
             }
             if (data.activeCall.latestSpeech) {
               setCallStatus('connected');
-              addTranscript('caller', data.activeCall.latestSpeech);
+              // Only add from HTTP polling as fallback if Socket.IO is disconnected
+              if (!socketRef.current?.connected) {
+                addTranscript('caller', data.activeCall.latestSpeech);
+              }
               fetch('/api/telephony/exotel?action=clearSpeech').catch(() => {});
             }
           }
@@ -529,11 +547,33 @@ export default function CallCenterPage() {
     }
   }, []);
 
+  const lastProcessedSpeechRef = useRef<{ text: string; sender: string; time: number }>({ text: '', sender: '', time: 0 });
+
   const addTranscript = (sender: 'caller' | 'agent', text: string, gesture?: string) => {
+    const cleanText = text.trim();
+    // Filter out punctuation-only artifacts or empty noise
+    if (!cleanText || cleanText === '.' || cleanText.toLowerCase() === 'empty') return;
+
+    // Deduplication filter: Prevent identical consecutive speech from flooding the teleprompter
+    const now = Date.now();
+    const last = lastProcessedSpeechRef.current;
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    if (
+      last.sender === sender &&
+      normalize(last.text) === normalize(cleanText) &&
+      now - last.time < 3500
+    ) {
+      console.log('[Transcript Deduplication] Filtered repeated speech bubble:', cleanText);
+      return;
+    }
+
+    lastProcessedSpeechRef.current = { text: cleanText, sender, time: now };
+
     const newItem: TranscriptItem = {
       id: `${Date.now()}-${Math.random()}`,
       sender,
-      text,
+      text: cleanText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       gesture
     };
@@ -926,10 +966,11 @@ export default function CallCenterPage() {
     <div className="min-h-screen flex flex-col bg-slate-50 bg-grid-lines text-slate-900 font-sans selection:bg-orange-500/20 selection:text-orange-600">
       <Navbar />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 flex flex-col gap-6">
+      <AuthGuard featureName="Voice Telecom Relay">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-28 pb-12 sm:pt-32 flex flex-col gap-6">
         
         {/* Top Header Card — Clean Original Brand Style */}
-        <section className="bg-white rounded-3xl border border-slate-200/80 shadow-xl p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <section className="gsap-text-reveal bg-white rounded-3xl border border-slate-200/80 shadow-xl p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-2xl bg-orange-50 border border-orange-200 text-orange-600 flex items-center justify-center font-black shadow-xs shrink-0">
               <Headphones className="w-7 h-7 text-orange-500" />
@@ -954,6 +995,16 @@ export default function CallCenterPage() {
                 <span>Bridge: <strong className="text-slate-900 font-mono">+91 95138 86363</strong></span>
                 <span>•</span>
                 <span>Account: <strong className="text-slate-700">smvitm4</strong></span>
+                <span>•</span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-mono font-semibold">
+                  <span>Balance: <strong className="text-slate-900">{credits} Cr</strong></span>
+                  <button
+                    onClick={() => openRechargeModal()}
+                    className="ml-1 px-1.5 py-0.2 rounded-full bg-orange-500 hover:bg-orange-600 text-white text-[9px] font-sans font-bold cursor-pointer transition"
+                  >
+                    + Top-Up
+                  </button>
+                </span>
               </p>
             </div>
           </div>
@@ -1037,7 +1088,7 @@ export default function CallCenterPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
           {/* Left Column: Live Audio Subtitle Teleprompter (7 Cols) */}
-          <div className="lg:col-span-7 flex flex-col gap-4">
+          <div className="gsap-from-left lg:col-span-7 flex flex-col gap-4">
             
             {/* Active Call Status Bar */}
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-md px-5 py-3.5 flex items-center justify-between">
@@ -1157,7 +1208,7 @@ export default function CallCenterPage() {
                     {callStatus === 'connected' && transcripts.length > 0 && transcripts[transcripts.length - 1].sender === 'caller' && (
                       <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 text-xs font-bold animate-pulse shadow-xs self-start my-2">
                         <Hand className="w-4 h-4 text-amber-600 animate-bounce" />
-                        <span>👉 Your turn to reply! Sign into the camera or tap a quick reply below.</span>
+                        <span>Your turn to reply! Sign into the camera or tap a quick reply below.</span>
                       </div>
                     )}
                   </>
@@ -1180,7 +1231,7 @@ export default function CallCenterPage() {
           </div>
 
           {/* Right Column: Deaf Executive Response Studio (5 Cols) */}
-          <div className="lg:col-span-5 flex flex-col gap-4">
+          <div className="gsap-from-right lg:col-span-5 flex flex-col gap-4">
             
             {/* Webcam ISL Gesture Capture Box */}
             <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xl overflow-hidden">
@@ -1202,7 +1253,7 @@ export default function CallCenterPage() {
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    ⚡ Auto-Hybrid
+                    Auto-Hybrid
                   </button>
                   <button
                     onClick={() => handleModeChange('word')}
@@ -1212,7 +1263,7 @@ export default function CallCenterPage() {
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    🤟 Words
+                    Words
                   </button>
                   <button
                     onClick={() => handleModeChange('fingerspell')}
@@ -1222,7 +1273,7 @@ export default function CallCenterPage() {
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    🔤 A-Z Spell
+                    A-Z Spell
                   </button>
                 </div>
 
@@ -1282,8 +1333,9 @@ export default function CallCenterPage() {
               {(recognitionMode === 'fingerspell' || recognitionMode === 'hybrid' || spelledLetters.length > 0) && (
                 <div className="p-3 bg-amber-50/80 border-t border-amber-200/90 flex items-center justify-between gap-3 animate-in fade-in duration-200 flex-wrap">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] uppercase font-black text-amber-900 tracking-wider">
-                      🔤 Spelled Word:
+                    <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider flex items-center gap-1">
+                      <Type className="w-3.5 h-3.5 text-amber-800" />
+                      <span>Spelled Word:</span>
                     </span>
                     {spelledLetters.length > 0 ? (
                       <div className="flex items-center gap-1">
@@ -1313,7 +1365,7 @@ export default function CallCenterPage() {
                       title="Backspace"
                       className="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-100 border border-amber-300 text-[10px] font-bold text-amber-900 transition disabled:opacity-40 cursor-pointer shadow-xs"
                     >
-                      ⌫ Del
+                      Del
                     </button>
                     <button
                       onClick={clearSpelledLetters}
@@ -1321,14 +1373,14 @@ export default function CallCenterPage() {
                       title="Clear letters"
                       className="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-100 border border-amber-300 text-[10px] font-bold text-amber-900 transition disabled:opacity-40 cursor-pointer shadow-xs"
                     >
-                      ✕ Clear
+                      Clear
                     </button>
                     <button
                       onClick={completeSpelledWord}
                       disabled={spelledLetters.length === 0}
                       className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-extrabold transition shadow-xs disabled:opacity-40 cursor-pointer"
                     >
-                      ␣ Add Word
+                      Add Word
                     </button>
                   </div>
                 </div>
@@ -1354,8 +1406,8 @@ export default function CallCenterPage() {
                     className="p-1.5 rounded-xl bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 text-center transition cursor-pointer shadow-xs group disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <div className="text-[9px] text-slate-500 font-bold group-hover:text-slate-700 truncate">{item.label}</div>
-                    <div className="text-[10px] font-black text-orange-600 mt-0.5">
-                      {callStatus === 'connected' ? '🤟 Sign' : 'Standby'}
+                    <div className="text-[10px] font-bold text-orange-600 mt-0.5">
+                      {callStatus === 'connected' ? 'Sign' : 'Standby'}
                     </div>
                   </button>
                 ))}
@@ -1423,7 +1475,7 @@ export default function CallCenterPage() {
                             key={idx}
                             className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 text-[10px] font-extrabold border border-orange-200 shadow-xs flex items-center gap-1"
                           >
-                            <span>🤟</span>
+                            <Hand className="w-3 h-3 text-orange-600 shrink-0" />
                             <span>{t}</span>
                           </span>
                         ))}
@@ -1545,6 +1597,7 @@ export default function CallCenterPage() {
         </div>
 
       </main>
+      </AuthGuard>
 
       {/* Client AI Provider & Model Configuration Modal */}
       {showConfigModal && (

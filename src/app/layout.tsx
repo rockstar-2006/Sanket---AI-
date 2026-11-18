@@ -3,7 +3,10 @@ import type { Metadata, Viewport } from 'next';
 import { Plus_Jakarta_Sans, Inter, Dancing_Script } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
+import { WalletProvider } from '@/context/WalletContext';
+import { RechargeModal } from '@/components/payment/RechargeModal';
 import { PwaInstallPrompt } from '@/components/pwa/PwaInstallPrompt';
+import { PageTransitionProvider } from '@/components/layout/PageTransitionProvider';
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -73,8 +76,13 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans antialiased">
         <AuthProvider>
-          {children}
-          <PwaInstallPrompt />
+          <WalletProvider>
+            <PageTransitionProvider>
+              {children}
+            </PageTransitionProvider>
+            <RechargeModal />
+            <PwaInstallPrompt />
+          </WalletProvider>
         </AuthProvider>
       </body>
     </html>
