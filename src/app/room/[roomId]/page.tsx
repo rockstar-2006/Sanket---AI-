@@ -82,6 +82,7 @@ import {
   AlertTriangle,
   QrCode,
   Info,
+  Zap,
 } from 'lucide-react';
 import { QrInviteModal } from '@/components/meeting/QrInviteModal';
 import {
