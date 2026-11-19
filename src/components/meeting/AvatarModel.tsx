@@ -1319,6 +1319,17 @@ export function AvatarModel({
     };
 
     const startModelLoading = async () => {
+      // Mobile Device Protection: Skip massive 60MB FBX download on mobile browsers to prevent OOM tab crash and WebSocket dropouts!
+      const isMobileDevice = typeof window !== 'undefined' && (
+        /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+        window.innerWidth < 768
+      );
+      if (isMobileDevice) {
+        console.log('[ModelLoader] Mobile device detected! Using lightweight humanoid model to preserve memory and keep video meeting connection stable.');
+        loadFallbackModel();
+        return;
+      }
+
       // 0. If user specifically requested a custom modelUrl
       const customUrl = modelUrlRef.current;
       if (customUrl) {

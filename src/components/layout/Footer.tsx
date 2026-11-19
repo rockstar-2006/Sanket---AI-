@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Heart, ShieldCheck, Lock, MessageSquareText, Video, Zap, Download, Database } from 'lucide-react';
+import { Heart, ShieldCheck, Lock, MessageSquareText, Video, Zap, Download, Database, GitBranch } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
@@ -22,6 +22,12 @@ export const Footer: React.FC = () => {
           <div>
             <h4 className="text-slate-900 font-bold text-sm mb-4">Meeting Solutions</h4>
             <ul className="space-y-2.5 text-sm text-slate-600">
+              <li>
+                <Link href="/open-source" className="text-purple-700 font-bold hover:underline flex items-center gap-1.5">
+                  <GitBranch className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Open Source Branch</span>
+                </Link>
+              </li>
               <li>
                 <Link href="/docs" className="text-emerald-700 font-bold hover:underline flex items-center gap-1.5">
                   <Database className="w-3.5 h-3.5 text-emerald-600" />

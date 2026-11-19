@@ -1,0 +1,133 @@
+{
+  "model_architecture": "Temporal ConvNet (TCN) + BiGRU with Attention Pooling",
+  "model_size_mb": 2.88,
+  "validation_samples_count": 639,
+  "total_classes_count": 261,
+  "present_classes_count": 232,
+  "top1_accuracy": 92.49,
+  "top1_ci_95": [
+    90.2,
+    94.3
+  ],
+  "top2_accuracy": 97.03,
+  "top2_ci_95": [
+    95.4,
+    98.1
+  ],
+  "top5_accuracy": 98.9,
+  "top5_ci_95": [
+    97.8,
+    99.5
+  ],
+  "precision_recall_ap_micro": 0.9715,
+  "precision_recall_ap_macro": 0.9672,
+  "roc_auc_micro": 0.9989,
+  "roc_auc_macro": 0.999,
+  "top_k_rank_table": [
+    {
+      "k": 1,
+      "correct": 591,
+      "total": 639,
+      "acc": 92.49,
+      "ci_95": [
+        90.2,
+        94.3
+      ]
+    },
+    {
+      "k": 2,
+      "correct": 620,
+      "total": 639,
+      "acc": 97.03,
+      "ci_95": [
+        95.4,
+        98.1
+      ]
+    },
+    {
+      "k": 3,
+      "correct": 627,
+      "total": 639,
+      "acc": 98.12,
+      "ci_95": [
+        96.7,
+        98.9
+      ]
+    },
+    {
+      "k": 4,
+      "correct": 630,
+      "total": 639,
+      "acc": 98.59,
+      "ci_95": [
+        97.3,
+        99.3
+      ]
+    },
+    {
+      "k": 5,
+      "correct": 632,
+      "total": 639,
+      "acc": 98.9,
+      "ci_95": [
+        97.8,
+        99.5
+      ]
+    },
+    {
+      "k": 6,
+      "correct": 634,
+      "total": 639,
+      "acc": 99.22,
+      "ci_95": [
+        98.2,
+        99.7
+      ]
+    },
+    {
+      "k": 7,
+      "correct": 634,
+      "total": 639,
+      "acc": 99.22,
+      "ci_95": [
+        98.2,
+        99.7
+      ]
+    },
+    {
+      "k": 8,
+      "correct": 634,
+      "total": 639,
+      "acc": 99.22,
+      "ci_95": [
+        98.2,
+        99.7
+      ]
+    },
+    {
+      "k": 9,
+      "correct": 634,
+      "total": 639,
+      "acc": 99.22,
+      "ci_95": [
+        98.2,
+        99.7
+      ]
+    },
+    {
+      "k": 10,
+      "correct": 635,
+      "total": 639,
+      "acc": 99.37,
+      "ci_95": [
+        98.4,
+        99.8
+      ]
+    }
+  ],
+  "disclosure_notes": [
+    "Validation split of 639 samples was also used for epoch 33 checkpoint selection.",
+    "232 of 261 classes are represented in the held-out validation split.",
+    "Micro ROC-AUC is pushed toward 1.0 due to 260 true negatives per sample; Precision-Recall AP is the primary discriminative metric."
+  ]
+}

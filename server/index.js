@@ -876,9 +876,13 @@ nextApp.prepare().then(() => {
 
     socket.on('telephony-sync-config', (config) => {
       if (config && config.apiKey) {
+        let targetModel = config.model;
+        if (!targetModel || targetModel.includes('gpt-oss')) {
+          targetModel = config.provider === 'gemini' ? 'gemini-1.5-flash' : 'llama-3.3-70b-versatile';
+        }
         userCustomConfig = {
-          provider: config.provider || 'gemini',
-          model: config.model || 'gemini-2.0-flash',
+          provider: config.provider || 'groq',
+          model: targetModel,
           apiKey: config.apiKey.trim().replace(/^['"]|['"]$/g, ''),
           customBaseUrl: config.customBaseUrl
         };

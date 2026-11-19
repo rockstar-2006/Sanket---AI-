@@ -55,18 +55,33 @@ export const RechargeModal: React.FC = () => {
   };
 
   const handleVerifyUtr = () => {
-    if (!utrNumber.trim()) return;
     setIsVerifying(true);
+    const resolvedTxn = utrNumber.trim() || `UPI-TXN-${Date.now().toString().slice(-8)}`;
     setTimeout(() => {
       setIsVerifying(false);
       setPaymentSuccess(true);
-      addCredits(activePlan.credits, activePlan.name, utrNumber.trim());
+      addCredits(activePlan.credits, activePlan.name, resolvedTxn);
       setTimeout(() => {
         setPaymentSuccess(false);
         setUtrNumber('');
         closeRechargeModal();
-      }, 2500);
-    }, 1200);
+      }, 2000);
+    }, 1000);
+  };
+
+  const handleInstantQuickRecharge = () => {
+    setIsVerifying(true);
+    const autoTxnId = `UPI-INSTANT-${Date.now().toString().slice(-8)}`;
+    setTimeout(() => {
+      setIsVerifying(false);
+      setPaymentSuccess(true);
+      addCredits(activePlan.credits, activePlan.name, autoTxnId);
+      setTimeout(() => {
+        setPaymentSuccess(false);
+        setUtrNumber('');
+        closeRechargeModal();
+      }, 2000);
+    }, 900);
   };
 
   return (
@@ -240,15 +255,24 @@ export const RechargeModal: React.FC = () => {
                     </div>
 
                     <button
-                      onClick={handleLaunchUpiApp}
-                      className="w-full py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm transition shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 cursor-pointer"
+                      onClick={handleInstantQuickRecharge}
+                      disabled={isVerifying}
+                      className="w-full py-3.5 rounded-xl bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold text-sm transition shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 cursor-pointer active:scale-98"
                     >
-                      <Smartphone className="w-4 h-4" />
-                      <span>Open GPay / PhonePe / Paytm to Pay ₹{activePlan.priceInr}</span>
+                      <Zap className="w-4 h-4" />
+                      <span>Instant Fast Checkout (Add +{activePlan.credits} Credits for ₹{activePlan.priceInr})</span>
                       <ArrowRight className="w-4 h-4 ml-1" />
                     </button>
-                    <span className="block text-center text-[11px] text-slate-500">
-                      Instantly opens your installed UPI app on mobile.
+
+                    <button
+                      onClick={handleLaunchUpiApp}
+                      className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs transition flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Smartphone className="w-4 h-4 text-orange-500" />
+                      <span>Open Installed UPI App on Mobile</span>
+                    </button>
+                    <span className="block text-center text-[10px] text-slate-400">
+                      Supports Google Pay, PhonePe, Paytm, BHIM, Cred &amp; NetBanking.
                     </span>
                   </div>
                 )}
@@ -261,7 +285,11 @@ export const RechargeModal: React.FC = () => {
                       <img
                         src={qrCodeUrl}
                         alt="Sanket AI UPI QR Code"
-                        className="w-40 h-40 rounded-xl object-contain"
+                        className="w-40 h-40 rounded-xl object-contain bg-slate-50"
+                        onError={(e) => {
+                          // Fallback to high-reliability QR code API if blocked
+                          (e.currentTarget as HTMLImageElement).src = `https://chart.googleapis.com/chart?cht=qr&chs=260x260&chl=${encodeURIComponent(upiIntentUri)}`;
+                        }}
                       />
                     </div>
                     <div className="space-y-1.5 text-xs text-slate-600">
@@ -275,8 +303,16 @@ export const RechargeModal: React.FC = () => {
                         2. Scan this QR code to transfer <strong className="text-slate-900">₹{activePlan.priceInr}</strong>.
                       </p>
                       <p>
-                        3. Enter the 12-digit UTR below for instant auto-crediting.
+                        3. Click confirm below to credit immediately!
                       </p>
+                      <button
+                        onClick={handleVerifyUtr}
+                        disabled={isVerifying}
+                        className="mt-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>I Have Scanned &amp; Paid (Confirm +{activePlan.credits} Cr)</span>
+                      </button>
                     </div>
                   </div>
                 )}
@@ -284,7 +320,7 @@ export const RechargeModal: React.FC = () => {
                 {/* 3. Reference UTR Number Input for Auto-Verification */}
                 <div className="pt-3 border-t border-slate-200/80">
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Completed payment? Enter 12-digit UPI Reference / UTR Number:
+                    Have a 12-digit UPI Reference / UTR Number? (Optional)
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -297,7 +333,7 @@ export const RechargeModal: React.FC = () => {
                     />
                     <button
                       onClick={handleVerifyUtr}
-                      disabled={isVerifying || !utrNumber.trim()}
+                      disabled={isVerifying}
                       className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white font-bold text-xs transition cursor-pointer flex items-center gap-1.5 shadow-sm"
                     >
                       {isVerifying ? (
@@ -308,7 +344,7 @@ export const RechargeModal: React.FC = () => {
                       ) : (
                         <>
                           <Check className="w-3.5 h-3.5" />
-                          <span>Confirm (+{activePlan.credits} Cr)</span>
+                          <span>Submit &amp; Credit (+{activePlan.credits} Cr)</span>
                         </>
                       )}
                     </button>

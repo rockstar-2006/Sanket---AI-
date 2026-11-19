@@ -9,6 +9,7 @@ interface AdminUserView {
   role: string;
   createdAt: string;
   credits: number;
+  isUnlimited?: boolean;
   status: 'active' | 'idle' | 'suspended';
   lastActive: string;
   totalCalls: number;
@@ -89,7 +90,8 @@ export async function GET(req: NextRequest) {
               email: data.email || 'user@sanket.ai',
               role: data.role || 'patient',
               createdAt: data.createdAt || new Date().toISOString(),
-              credits: data.credits !== undefined ? data.credits : 100,
+              credits: data.isUnlimited ? 999999 : (data.credits !== undefined ? data.credits : 100),
+              isUnlimited: Boolean(data.isUnlimited || (data.credits && data.credits >= 999999)),
               status: 'active',
               lastActive: 'Recently',
               totalCalls: data.totalCalls || 0,
@@ -154,7 +156,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { action, uid, newCredits, newRole } = body;
+    const { action, uid, newCredits, newRole, isUnlimited } = body;
 
     if (!uid) {
       return NextResponse.json({ error: 'User UID is required' }, { status: 400 });
@@ -190,6 +192,10 @@ export async function POST(req: NextRequest) {
       try {
         const userRef = doc(db, 'users', uid);
         const updates: Record<string, any> = {};
+        if (isUnlimited !== undefined) {
+          updates.isUnlimited = Boolean(isUnlimited);
+          if (isUnlimited) updates.credits = 999999;
+        }
         if (newCredits !== undefined) updates.credits = Number(newCredits);
         if (newRole) updates.role = newRole;
         await setDoc(userRef, updates, { merge: true });
@@ -201,6 +207,10 @@ export async function POST(req: NextRequest) {
     // Update memory
     const existing = SEED_USERS.find((u) => u.uid === uid);
     if (existing) {
+      if (isUnlimited !== undefined) {
+        existing.isUnlimited = Boolean(isUnlimited);
+        if (isUnlimited) existing.credits = 999999;
+      }
       if (newCredits !== undefined) existing.credits = Number(newCredits);
       if (newRole) existing.role = newRole;
     }
@@ -209,7 +219,8 @@ export async function POST(req: NextRequest) {
       success: true,
       message: `User ${uid} updated successfully.`,
       updatedUid: uid,
-      newCredits,
+      newCredits: isUnlimited ? 999999 : newCredits,
+      isUnlimited,
       newRole,
     });
   } catch (error: any) {

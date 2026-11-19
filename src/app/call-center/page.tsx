@@ -76,13 +76,19 @@ export interface CustomAIConfig {
 }
 
 const DEFAULT_AI_CONFIG: CustomAIConfig = {
-  provider: 'gemini',
-  model: 'gemini-1.5-flash',
+  provider: 'groq',
+  model: 'llama-3.3-70b-versatile',
   apiKey: '',
   customBaseUrl: '',
 };
 
 const PROVIDER_MODELS: Record<AIProvider, { id: string; name: string; shortName: string }[]> = {
+  groq: [
+    { id: 'llama-3.3-70b-versatile', name: 'Meta Llama 3.3 70B Versatile (Flagship - 14,400 req/day)', shortName: 'Llama 3.3 70B' },
+    { id: 'llama-3.1-8b-instant', name: 'Meta Llama 3.1 8B Instant (Ultra-Fast <80ms)', shortName: 'Llama 3.1 8B' },
+    { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B 32k (High Context)', shortName: 'Mixtral 8x7B' },
+    { id: 'gemma2-9b-it', name: 'Google Gemma 2 9B', shortName: 'Gemma 2 9B' },
+  ],
   gemini: [
     { id: 'gemini-1.5-flash', name: 'Google Gemini 1.5 Flash (Ultra Fast)', shortName: 'Gemini 1.5 Flash' },
     { id: 'gemini-2.0-flash', name: 'Google Gemini 2.0 Flash (Next-Gen)', shortName: 'Gemini 2.0 Flash' },
@@ -99,11 +105,6 @@ const PROVIDER_MODELS: Record<AIProvider, { id: string; name: string; shortName:
     { id: 'gpt-4o-mini', name: 'OpenAI GPT-4o Mini (Fast & Affordable)', shortName: 'GPT-4o Mini' },
     { id: 'gpt-4o', name: 'OpenAI GPT-4o (Flagship Omni)', shortName: 'GPT-4o' },
     { id: 'o3-mini', name: 'OpenAI o3-mini (Reasoning Engine)', shortName: 'o3-mini' },
-  ],
-  groq: [
-    { id: 'openai/gpt-oss-20b', name: 'OpenAI GPT OSS 20B (1000 T/s - Fastest)', shortName: 'GPT OSS 20B' },
-    { id: 'openai/gpt-oss-120b', name: 'OpenAI GPT OSS 120B (High Precision)', shortName: 'GPT OSS 120B' },
-    { id: 'gemma2-9b-it', name: 'Google Gemma 2 9B (Production)', shortName: 'Gemma 2 9B' },
   ],
   openrouter: [
     { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet via OpenRouter', shortName: 'Claude 3.5' },
@@ -335,7 +336,7 @@ class RealPhoneRingtone {
 }
 
 export default function CallCenterPage() {
-  const { credits, deductCredits, openRechargeModal } = useWallet();
+  const { credits, isUnlimited, deductCredits, openRechargeModal } = useWallet();
 
   // Call State
   const [callStatus, setCallStatus] = useState<'idle' | 'ringing' | 'connected' | 'ended'>('idle');
@@ -414,7 +415,7 @@ export default function CallCenterPage() {
   const [autoSpeakCountdown, setAutoSpeakCountdown] = useState<number | null>(null);
   const [autoSpeakEnabled, setAutoSpeakEnabled] = useState<boolean>(true);
   const [isComposingWithAi, setIsComposingWithAi] = useState<boolean>(false);
-  const [composerSource, setComposerSource] = useState<string>('Google Gemini 1.5');
+  const [composerSource, setComposerSource] = useState<string>('Groq (Llama 3.3 70B)');
   const autoSpeakTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -451,6 +452,10 @@ export default function CallCenterPage() {
       const saved = localStorage.getItem('sanket_custom_ai_config');
       if (saved) {
         const parsed = JSON.parse(saved);
+        // Auto-upgrade invalid or legacy model names
+        if (parsed.provider === 'groq' && (!parsed.model || parsed.model.includes('gpt-oss'))) {
+          parsed.model = 'llama-3.3-70b-versatile';
+        }
         setAiConfig(parsed);
         setTempConfig(parsed);
         aiConfigRef.current = parsed;
@@ -799,7 +804,7 @@ export default function CallCenterPage() {
   };
 
   const handleAnswerCall = () => {
-    if (credits < 10) {
+    if (credits < 10 && !isUnlimited && credits < 999999) {
       openRechargeModal();
       return;
     }
@@ -1102,7 +1107,7 @@ export default function CallCenterPage() {
     try {
       localStorage.removeItem('sanket_custom_ai_config');
     } catch {}
-    setComposerSource('Google Gemini 1.5');
+    setComposerSource('Groq (Llama 3.3 70B)');
     setTestStatus(null);
     setTestSynthesisStatus(null);
   };

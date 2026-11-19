@@ -22,12 +22,13 @@ import {
   Layers,
   ExternalLink,
   CreditCard,
-  Database
+  Database,
+  GitBranch
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const { user, profile, logout } = useAuth();
-  const { credits, openRechargeModal } = useWallet();
+  const { credits, isUnlimited, openRechargeModal } = useWallet();
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -135,6 +136,15 @@ export const Navbar: React.FC = () => {
       glow: 'group-hover:shadow-[0_0_20px_-5px_rgba(99,102,241,0.3)]',
     },
     {
+      title: 'Open Source',
+      desc: 'Browse branch, on-device models & GitHub code',
+      href: '/open-source',
+      icon: GitBranch,
+      badge: 'v2.1',
+      accent: 'text-purple-400 bg-purple-500/10 border-purple-500/20 group-hover:bg-purple-500/20 group-hover:border-purple-500/40',
+      glow: 'group-hover:shadow-[0_0_20px_-5px_rgba(168,85,247,0.3)]',
+    },
+    {
       title: 'Dataset & Docs',
       desc: '288 ISL motion files, schema & CLI',
       href: '/docs',
@@ -203,6 +213,14 @@ export const Navbar: React.FC = () => {
             >
               Pricing
             </Link>
+            <Link 
+              href="/open-source" 
+              prefetch={true}
+              className="hover:text-white transition flex items-center gap-1.5 text-purple-400 font-semibold"
+            >
+              <GitBranch className="w-3.5 h-3.5" />
+              <span>Open Source</span>
+            </Link>
           </nav>
 
           {/* Right Action Controls */}
@@ -212,14 +230,24 @@ export const Navbar: React.FC = () => {
             {user && (
               <button
                 onClick={() => openRechargeModal()}
-                title="Account Balance - Click to top up"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+                title={isUnlimited || credits >= 999999 ? "Unlimited VIP Demo Pass Active" : "Account Balance - Click to top up"}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition cursor-pointer ${
+                  isUnlimited || credits >= 999999
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-[0_0_15px_-3px_rgba(245,158,11,0.3)]'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                }`}
               >
-                <span className="text-slate-400 text-[11px] hidden sm:inline font-mono">Credits:</span>
-                <span className="font-bold text-white font-mono">{credits}</span>
-                <span className="w-4 h-4 rounded-full bg-orange-500/20 text-orange-400 font-bold text-[10px] flex items-center justify-center border border-orange-500/30 ml-0.5">
-                  +
+                <span className="text-slate-400 text-[11px] hidden sm:inline font-mono">
+                  {isUnlimited || credits >= 999999 ? 'Pass:' : 'Credits:'}
                 </span>
+                <span className={`font-bold font-mono ${isUnlimited || credits >= 999999 ? 'text-amber-400' : 'text-white'}`}>
+                  {isUnlimited || credits >= 999999 ? '∞ VIP' : credits}
+                </span>
+                {!(isUnlimited || credits >= 999999) && (
+                  <span className="w-4 h-4 rounded-full bg-orange-500/20 text-orange-400 font-bold text-[10px] flex items-center justify-center border border-orange-500/30 ml-0.5">
+                    +
+                  </span>
+                )}
               </button>
             )}
 

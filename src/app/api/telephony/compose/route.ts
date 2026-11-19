@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       testConnection = false 
     } = body || {};
 
-    const provider: AIProvider = customConfig?.provider || 'gemini';
+    const provider: AIProvider = customConfig?.provider || 'groq';
     const customKey = customConfig?.apiKey?.trim();
 
     // ─── 0. Quick Connection Test Mode ───────────────────────────────────────
@@ -104,14 +104,23 @@ Conversation context:
 - What the caller on the phone just said: "${callerMessage || 'Starting or continuing conversation'}"
 
 Task:
-Formulate ONE natural, fluent, articulate human English sentence in the first person that accurately translates what the deaf person signed in direct response to the caller.
+Formulate ONE natural, fluent, articulate human English sentence in the first person that accurately translates what the deaf person signed in direct, meaningful response to the caller.
 
 Production Rules:
-- If multiple signs were performed in sequence (e.g. [GOOD NIGHT, HELLO, PERFECT]), prioritize the most recent intended gesture while keeping the sentence polite, complete, and contextually fluent.
-- If the caller asked a question (e.g. "How about you?"), synthesize a direct, warm answer reflecting the signed intent (e.g. signed [PERFECT] or [GOOD] -> "I am doing really well too, thank you so much for asking!").
+- Direct Answer Rule: If the caller asked a question, formulate a direct conversational reply reflecting the deaf person's sign:
+  * If caller asked "Had your lunch?" or about food:
+    - Signed YES: "Yes, I have had my lunch, thank you!"
+    - Signed NO: "No, not yet, I haven't had lunch yet."
+    - Signed FOOD: "Yes, I am heading out to get some food now."
+  * If caller asked "How do you learn?" or "How does it work?":
+    - Signed LEARN / HELP / YES: "I learn sign language models through continuous machine learning dataset training."
+  * If caller asked "How are you?" or "How about you?":
+    - Signed PERFECT / GOOD / HAPPY / YES: "I am doing great and everything is going wonderfully today, thank you!"
+  * If caller asked "Can you call me?":
+    - Signed CALL ME / YES / OK: "Yes, absolutely! I will give you a call right away."
 - If they signed [HELLO] or [HI], formulate a warm greeting matching the caller.
 - If they fingerspelled a word or name (e.g. "RAHUL"), incorporate it naturally (e.g. "My name is Rahul, very glad to connect with you.").
-- If they signed [WAIT], politely ask the caller to hold (e.g. "Please hold on for just a moment, I am checking that right now.").
+- If they signed [WAIT], politely ask the caller to hold (e.g. "Please hold on for just a moment, I will be right with you.").
 - If they signed [THANK] or [THANK YOU], express genuine appreciation.
 - Speak directly in the first person ("I", "we"). Never sound robotic or generic.
 - Return ONLY the exact spoken sentence with no quotes, brackets, or conversational preamble.`;
@@ -142,6 +151,33 @@ Production Rules:
         }
       } catch (err: any) {
         console.warn(`[AI Provider ${provider}] Call failed:`, err?.message || err);
+
+        // If client custom key failed (e.g. 401 Unauthorized or quota), auto-fallback to server environment key
+        const serverDefaultKey = getDefaultKey(provider);
+        if (customKey && serverDefaultKey && customKey !== serverDefaultKey) {
+          console.log(`[AI Provider ${provider}] Custom key failed. Retrying with server environment key...`);
+          try {
+            const fallbackSentence = await executeLLMCall(
+              provider,
+              activeModel,
+              serverDefaultKey,
+              prompt,
+              customConfig?.customBaseUrl
+            );
+            if (fallbackSentence && fallbackSentence.length > 3) {
+              return NextResponse.json({
+                sentence: fallbackSentence.replace(/^["']|["']$/g, '').trim(),
+                source: `ai-${provider}-server-fallback`,
+                provider,
+                model: activeModel,
+                tokens,
+                confidence: 0.99,
+              });
+            }
+          } catch (retryErr: any) {
+            console.warn(`[AI Provider ${provider} Server Fallback failed]:`, retryErr?.message || retryErr);
+          }
+        }
       }
     }
 
@@ -160,17 +196,17 @@ Production Rules:
 
 function getDefaultModel(provider: AIProvider): string {
   switch (provider) {
+    case 'groq':
+      return 'llama-3.3-70b-versatile';
     case 'claude':
       return 'claude-3-5-sonnet-20241022';
     case 'openai':
       return 'gpt-4o-mini';
-    case 'groq':
-      return 'openai/gpt-oss-20b';
     case 'openrouter':
-      return 'anthropic/claude-3.5-sonnet';
+      return 'meta-llama/llama-3.3-70b-instruct';
     case 'gemini':
     default:
-      return 'gemini-1.5-flash-latest';
+      return 'gemini-1.5-flash';
   }
 }
 
@@ -302,6 +338,10 @@ async function executeLLMCall(
 
   // 4. Groq (Ultra-low latency fast LLM inference)
   if (provider === 'groq') {
+    let targetModel = cleanModel;
+    if (!targetModel || targetModel.includes('gpt-oss') || targetModel.includes('undefined')) {
+      targetModel = 'llama-3.3-70b-versatile';
+    }
     const url = customBaseUrl || 'https://api.groq.com/openai/v1/chat/completions';
     const res = await fetch(url, {
       method: 'POST',
@@ -310,13 +350,13 @@ async function executeLLMCall(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: cleanModel,
+        model: targetModel,
         max_tokens: 150,
         temperature: 0.3,
         messages: [
           {
             role: 'system',
-            content: 'You are a real-time speech interpreter for a deaf person. Formulate one natural, articulate, polite first-person English sentence strictly translating their signs in the context of the conversation. Output ONLY the plain sentence.'
+            content: 'You are a real-time speech interpreter for a deaf person on a live phone call. Formulate one natural, articulate, polite first-person English sentence strictly translating their signs in direct response to the caller. Output ONLY the plain sentence.'
           },
           { role: 'user', content: prompt }
         ],

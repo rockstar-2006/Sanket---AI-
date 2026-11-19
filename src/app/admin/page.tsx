@@ -45,6 +45,7 @@ interface AdminUser {
   role: string;
   createdAt: string;
   credits: number;
+  isUnlimited?: boolean;
   status: 'active' | 'idle' | 'suspended';
   lastActive: string;
   totalCalls: number;
@@ -352,6 +353,38 @@ export default function AdminPage() {
       }
     } catch (err) {
       alert('Error saving updated credits');
+    } finally {
+      setIsUpdatingCredits(false);
+    }
+  };
+
+  const handleGrantUnlimitedVIP = async (userToUpdate: AdminUser, turnOn: boolean = true) => {
+    setIsUpdatingCredits(true);
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: userToUpdate.uid,
+          isUnlimited: turnOn,
+          newCredits: turnOn ? 999999 : 500,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.uid === userToUpdate.uid
+              ? { ...u, isUnlimited: turnOn, credits: turnOn ? 999999 : 500 }
+              : u
+          )
+        );
+        setSelectedUserForCredits(null);
+      } else {
+        alert(data.error || 'Failed to update user VIP status');
+      }
+    } catch {
+      alert('Network error while granting unlimited pass');
     } finally {
       setIsUpdatingCredits(false);
     }
@@ -913,10 +946,19 @@ export default function AdminPage() {
                           {u.uid}
                         </td>
                         <td className="py-4 px-4">
-                          <span className="font-bold text-orange-600 text-sm">
-                            {u.credits}
-                          </span>
-                          <span className="text-[10px] text-slate-500 ml-1">credits</span>
+                          {u.isUnlimited || u.credits >= 999999 ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-xs">
+                              <Sparkles className="w-3 h-3 text-amber-600" />
+                              <span>∞ VIP UNLIMITED</span>
+                            </span>
+                          ) : (
+                            <>
+                              <span className="font-bold text-orange-600 text-sm">
+                                {u.credits}
+                              </span>
+                              <span className="text-[10px] text-slate-500 ml-1">credits</span>
+                            </>
+                          )}
                         </td>
                         <td className="py-4 px-4 text-slate-700 font-bold">
                           {u.totalCalls || 0}
@@ -929,6 +971,18 @@ export default function AdminPage() {
                         </td>
                         <td className="py-4 px-4 text-right">
                           <div className="inline-flex items-center gap-2">
+                            <button
+                              onClick={() => handleGrantUnlimitedVIP(u, !u.isUnlimited)}
+                              className={`px-3 py-1.5 rounded-full text-xs font-bold transition cursor-pointer flex items-center gap-1 border ${
+                                u.isUnlimited || u.credits >= 999999
+                                  ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300'
+                                  : 'bg-slate-100 hover:bg-amber-50 text-slate-700 border-slate-200 hover:border-amber-300'
+                              }`}
+                              title={u.isUnlimited ? "Remove Unlimited Pass" : "Grant Unlimited VIP Demo Pass"}
+                            >
+                              <Sparkles className={`w-3 h-3 ${u.isUnlimited ? 'text-amber-600' : 'text-slate-400'}`} />
+                              <span>{u.isUnlimited ? 'Revoke VIP' : 'Make Unlimited'}</span>
+                            </button>
                             <button
                               onClick={() => setSelectedUserForCredits(u)}
                               className="px-3 py-1.5 rounded-full bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-xs font-bold transition cursor-pointer"
@@ -1062,7 +1116,19 @@ export default function AdminPage() {
                     />
                   </div>
 
-                  <div className="flex items-center gap-2 pt-2">
+                  <div className="pt-2 border-t border-slate-100 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => handleGrantUnlimitedVIP(selectedUserForCredits, !selectedUserForCredits.isUnlimited)}
+                      disabled={isUpdatingCredits}
+                      className="w-full py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-mono font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+                    >
+                      <Sparkles className="w-4 h-4 text-amber-600" />
+                      <span>{selectedUserForCredits.isUnlimited ? 'Revoke Unlimited Pass' : '★ Set as Unlimited VIP Demo Pass (∞ Credits)'}</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
                     <button
                       onClick={() => setSelectedUserForCredits(null)}
                       className="flex-1 py-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-bold font-mono text-slate-700 cursor-pointer"
