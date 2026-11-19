@@ -1563,6 +1563,7 @@ function MeetingRoomContent() {
   // ─── Sign-to-Speech (ISL Camera Recognizer & TTS) States ───────────────────
   const [isSignToSpeechActive, setIsSignToSpeechActive] = useState<boolean>(userRole === 'deaf_signer');
   const [signingInputMode, setSigningInputMode] = useState<'word' | 'fingerspell'>('word');
+  const [speechLanguage, setSpeechLanguage] = useState<'en-IN' | 'kn-IN' | 'hi-IN'>('en-IN');
   const [showFramingGuide, setShowFramingGuide] = useState<boolean>(true);
   const [framingStatus, setFramingStatus] = useState<FramingStatus>({
     isInZone: false,
@@ -2499,7 +2500,13 @@ function MeetingRoomContent() {
     });
 
     // Remote Signer Speech Event: When a Deaf peer signs, speak aloud and render subtitles
-    socket.on('signer-speech-event', (data: { signerName: string; spokenText: string; tokens: string[]; time: string }) => {
+    socket.on('signer-speech-event', async (data: {
+      signerName: string;
+      spokenText: string;
+      tokens: string[];
+      time: string;
+      audioBytes?: number[];
+    }) => {
       console.log('[Socket.IO] Received signer-speech-event:', data);
 
       setInterimTranscript('');
@@ -2521,24 +2528,29 @@ function MeetingRoomContent() {
       };
       setMeetingNotesLog((prev) => [...prev, remoteSignerNote]);
 
-      // If local peer is speaking interviewer or hearing participant, speak aloud via TTS
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window && cleanSpeech) {
+      // Play Sarvam MP3 audio received from the signer
+      if (data.audioBytes && data.audioBytes.length > 0) {
         try {
-          window.speechSynthesis.resume();
-          window.speechSynthesis.cancel();
-          const utter = new SpeechSynthesisUtterance(cleanSpeech);
-          utter.rate = 1.0;
-          utter.pitch = 1.0;
-          utter.volume = 1.0;
-          utter.lang = 'en-US';
-          const voices = window.speechSynthesis.getVoices();
-          if (voices && voices.length > 0) {
-            const preferred = voices.find((v) => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.default)) || voices.find((v) => v.lang.startsWith('en'));
-            if (preferred) utter.voice = preferred;
-          }
-          window.speechSynthesis.speak(utter);
+          const audioBlob = new Blob(
+            [new Uint8Array(data.audioBytes)],
+            { type: 'audio/mpeg' }
+          );
+
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audio = new Audio(audioUrl);
+
+          audio.onended = () => {
+            URL.revokeObjectURL(audioUrl);
+          };
+
+          audio.onerror = () => {
+            console.warn('[Sarvam] Could not play received audio.');
+            URL.revokeObjectURL(audioUrl);
+          };
+
+          await audio.play();
         } catch (e) {
-          console.warn('[TTS] Synthesis audio notice:', e);
+          console.warn('[Sarvam] Audio playback error:', e);
         }
       }
 
@@ -3190,26 +3202,76 @@ function MeetingRoomContent() {
       .replace(/\s+/g, ' ')
       .trim();
 
-    // 1. Speak aloud via browser Web Speech API
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window && cleanSpokenSentence) {
-      try {
-        window.speechSynthesis.resume();
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(cleanSpokenSentence);
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-        utterance.volume = 1.0;
-        utterance.lang = 'en-US';
-        const voices = window.speechSynthesis.getVoices();
-        if (voices && voices.length > 0) {
-          const preferred = voices.find((v) => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.default)) || voices.find((v) => v.lang.startsWith('en'));
-          if (preferred) utterance.voice = preferred;
-        }
-        window.speechSynthesis.speak(utterance);
-      } catch (e) {
-        console.warn('[TTS] Synthesis audio notice:', e);
+    // 1. Generate multilingual speech using Sarvam
+let speechText = cleanSpokenSentence;
+let sarvamAudio: number[] | undefined;
+
+try {
+  // Translate English sentence if another language is selected
+  if (speechLanguage !== 'en-IN') {
+    const translateRes = await fetch('/api/sarvam-translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: cleanSpokenSentence,
+        targetLanguageCode: speechLanguage,
+      }),
+    });
+
+    if (!translateRes.ok) {
+      throw new Error('Translation failed');
+    }
+
+    const translateData = await translateRes.json();
+    speechText = translateData.translatedText || cleanSpokenSentence;
+  }
+
+  // Generate speech audio
+  const ttsRes = await fetch('/api/sarvam-tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text: speechText,
+      languageCode: speechLanguage,
+    }),
+  });
+
+  if (!ttsRes.ok) {
+    throw new Error('Sarvam TTS failed');
+  }
+
+  const audioBuffer = await ttsRes.arrayBuffer();
+
+  if (audioBuffer.byteLength <= 900000) {
+    sarvamAudio = Array.from(new Uint8Array(audioBuffer));
+  }
+} catch (err) {
+  console.warn('[Sarvam] Speech generation failed:', err);
+
+  // Fallback to English speech
+  speechText = cleanSpokenSentence;
+
+  try {
+    const fallbackRes = await fetch('/api/sarvam-tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: cleanSpokenSentence,
+        languageCode: 'en-IN',
+      }),
+    });
+
+    if (fallbackRes.ok) {
+      const audioBuffer = await fallbackRes.arrayBuffer();
+
+      if (audioBuffer.byteLength <= 900000) {
+        sarvamAudio = Array.from(new Uint8Array(audioBuffer));
       }
     }
+  } catch (fallbackError) {
+    console.warn('[Sarvam] English fallback failed:', fallbackError);
+  }
+}
 
     // 2. Broadcast to other participants via Socket.IO
     if (socketRef.current) {
@@ -3217,7 +3279,8 @@ function MeetingRoomContent() {
         roomId,
         data: {
           signerName: displayName,
-          spokenText: cleanSpokenSentence,
+          spokenText: speechText,
+          ...(sarvamAudio ? { audioBytes: sarvamAudio } : {}),
           tokens: tokensToUse,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
@@ -3232,20 +3295,20 @@ function MeetingRoomContent() {
       role: 'deaf_signer',
       sourceType: signingInputMode === 'fingerspell' ? 'fingerspell' : 'sign',
       originalContent: `ISL: [${tokensToUse.join(', ')}]`,
-      translatedContent: cleanSpokenSentence,
-      category: categorizeMeetingEntry(cleanSpokenSentence, 'deaf_signer'),
+      translatedContent: speechText,
+      category: categorizeMeetingEntry(speechText, 'deaf_signer'),
     };
     setMeetingNotesLog((prev) => [...prev, localSignerNote]);
 
     // 3. Update local subtitles & in-call chat
-    setCurrentSentence(`You (Signer): "${cleanSpokenSentence}"`);
+    setCurrentSentence(`You (Signer): "${speechText}"`);
     setChatMessages((prev) => [
       ...prev,
       {
         id: `${Date.now()}-${Math.random()}`,
         sender: displayName,
         role: userRole,
-        text: cleanSpokenSentence,
+        text: speechText,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isSelf: true,
         isSigned: true,
@@ -6600,6 +6663,22 @@ function MeetingRoomContent() {
             )}
           </div>
 
+          {/* Sarvam Speech Language Selector */}
+          <div className="flex items-center gap-2 bg-[#303134] border border-[#5f6368] rounded-full px-3 h-10 sm:h-11">
+            <Volume2 className="w-4 h-4 text-orange-400" />
+            <select
+              value={speechLanguage}
+              onChange={(e) =>
+                setSpeechLanguage(e.target.value as 'en-IN' | 'kn-IN' | 'hi-IN')
+              }
+              className="bg-transparent text-white text-xs sm:text-sm outline-none cursor-pointer"
+              title="Select sign-to-speech language"
+            >
+              <option value="en-IN" className="bg-[#303134]">English</option>
+              <option value="kn-IN" className="bg-[#303134]">ಕನ್ನಡ</option>
+              <option value="hi-IN" className="bg-[#303134]">हिन्दी</option>
+            </select>
+          </div>
           {/* End Meeting Button (Google Meet Red Rounded Pill) */}
           <button
             onClick={handleLeaveMeeting}
