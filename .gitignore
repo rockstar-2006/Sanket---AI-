@@ -49,6 +49,20 @@ __pycache__/
 *.pyc
 *.pt
 *.pth
+*.npz
+
+# Model evaluation artifacts & training logs
+model_training/eval_outputs.npz
+model_training/eval_predictions.csv
+model_training/training_log.csv
+model_training/final_evaluation_figures/
+model_training/real_evaluation_curves/
+model_training/*.png
+model_training/*.csv
+model_training/*.npz
+
+# Custom test signs recordings
+public/custom_signs/custom_*.json
 
 Dataset/
 letter dataset/
