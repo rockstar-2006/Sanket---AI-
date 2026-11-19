@@ -1,47 +1,28 @@
 {
-  "name": "sanket-ai",
-  "version": "1.0.0",
+  "name": "sanket-web",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "node -e \"const fs=require('fs'),p=require('path');const d=p.join('src','app','consultation','join','[roomCode]');if(fs.existsSync(d))fs.rmSync(d,{recursive:true,force:true});\" && node scripts/generate-pwa-icons.js",
-    "prebuild": "node -e \"const fs=require('fs'),p=require('path');const d=p.join('src','app','consultation','join','[roomCode]');if(fs.existsSync(d))fs.rmSync(d,{recursive:true,force:true});\" && node scripts/generate-pwa-icons.js",
-    "pwa:icons": "node scripts/generate-pwa-icons.js",
-    "dev": "node server/index.js --dev",
+    "dev": "next dev",
     "build": "next build",
-    "start": "node server/index.js",
-    "next:start": "next start",
-    "lint": "next lint",
-    "clean": "node -e \"const fs=require('fs');['.next'].forEach(d=>{if(fs.existsSync(d))fs.rmSync(d,{recursive:true,force:true})});\"",
-    "server": "node server/index.js",
-    "dev:all": "npm run dev"
+    "start": "next start",
+    "lint": "eslint"
   },
   "dependencies": {
-    "@react-three/drei": "^10.7.7",
-    "@react-three/fiber": "^9.7.0",
-    "@types/node": "^22.10.10",
-    "@types/react": "^19.0.8",
-    "@types/react-dom": "^19.0.3",
-    "autoprefixer": "^10.4.20",
-    "clsx": "^2.1.1",
-    "express": "^4.21.2",
-    "firebase": "^11.2.0",
-    "framer-motion": "^12.0.6",
-    "livekit-client": "^2.9.2",
-    "livekit-server-sdk": "^2.9.2",
-    "lucide-react": "^0.474.0",
-    "next": "^15.1.6",
-    "postcss": "^8.5.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "socket.io": "^4.8.1",
-    "socket.io-client": "^4.8.1",
-    "tailwind-merge": "^3.0.1",
-    "tailwindcss": "^3.4.17",
-    "three": "^0.185.1",
-    "typescript": "^5.7.3"
+    "@mediapipe/tasks-vision": "^1.2.3",
+    "firebase": "^13.3.0",
+    "next": "16.4.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.0",
-    "concurrently": "^9.1.2"
+    "@tailwindcss/turbopack": "4.3.3",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "tailwindcss": "4.3.3",
+    "typescript": "^5"
   }
 }
