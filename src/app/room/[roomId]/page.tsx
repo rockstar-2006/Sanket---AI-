@@ -1239,15 +1239,27 @@ function MeetingRoomContent() {
   };
 
   const handleTestMurfVoice = async () => {
-    setTestVoiceStatus({ loading: true });
+    const keyToTest = (murfApiKey || '').trim();
+    if (!keyToTest) {
+      setTestVoiceStatus({
+        loading: false,
+        success: false,
+        message: 'Please enter a valid Murf AI API key to test.',
+      });
+      return;
+    }
+    setTestVoiceStatus({ loading: true, message: 'Contacting Murf AI Studio to synthesize audio preview...' });
     try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('sanket_murf_api_key', keyToTest);
+      }
       const res = await fetch('/api/tts/murf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           testConnection: true,
           voiceId: murfVoiceId,
-          apiKey: murfApiKey,
+          apiKey: keyToTest,
         }),
       });
       const data = await res.json();
@@ -1268,7 +1280,7 @@ function MeetingRoomContent() {
             ? data.error
             : typeof data?.message === 'string'
               ? data.message
-              : 'Failed to generate Murf speech preview.';
+              : 'Failed to generate Murf speech preview. Please verify your API key.';
         setTestVoiceStatus({
           loading: false,
           success: false,
@@ -1728,6 +1740,7 @@ function MeetingRoomContent() {
     }
     return true;
   });
+  const [mobileViewTab, setMobileViewTab] = useState<'video' | 'companion' | 'split'>('video');
   const [joinUrl, setJoinUrl] = useState('');
   const [clockTime, setClockTime] = useState<string>('');
 
@@ -2791,7 +2804,7 @@ function MeetingRoomContent() {
       const cleanSpeech = (data.spokenText || '')
         .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
         .trim();
-      setCurrentSentence(`${data.signerName}: "${cleanSpeech}"`);
+      setCurrentSentence(`${data.signerName}: ${cleanSpeech}`);
 
       // Log into Bilingual Meeting Minutes & Clinical Records ledger
       const remoteSignerNote: MeetingNoteEntry = {
@@ -3511,7 +3524,7 @@ function MeetingRoomContent() {
     setMeetingNotesLog((prev) => [...prev, localSignerNote]);
 
     // 3. Update local subtitles & in-call chat
-    setCurrentSentence(`You (Signer): "${cleanSpokenSentence}"`);
+    setCurrentSentence(`You (Signer): ${cleanSpokenSentence}`);
     setChatMessages((prev) => [
       ...prev,
       {
@@ -5401,7 +5414,13 @@ function MeetingRoomContent() {
                       <input
                         type="text"
                         value={murfApiKey}
-                        onChange={(e) => setMurfApiKey(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value.trim();
+                          setMurfApiKey(val);
+                          if (typeof window !== 'undefined') {
+                            localStorage.setItem('sanket_murf_api_key', val);
+                          }
+                        }}
                         placeholder="ap2_..."
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-mono placeholder-slate-400 focus:outline-none focus:border-orange-500 shadow-xs"
                       />
@@ -6451,7 +6470,7 @@ function MeetingRoomContent() {
                     </label>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <button
                       type="button"
                       onClick={() => setAvatarColorMode((prev) => (prev === 'natural' ? 'original' : 'natural'))}
@@ -6464,6 +6483,16 @@ function MeetingRoomContent() {
                     >
                       <span>Color: {avatarColorMode === 'natural' ? 'Natural Skin & Suit' : 'Original Textures'}</span>
                     </button>
+                    {is3DModelStarted && (
+                      <button
+                        type="button"
+                        onClick={() => setIs3DModelStarted(false)}
+                        className="px-2 py-1 rounded-lg bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-300 text-[10px] font-semibold transition cursor-pointer"
+                        title="Unload 3D Model and return to Standby"
+                      >
+                        Stop Model
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -6505,25 +6534,40 @@ function MeetingRoomContent() {
                       <div className="w-14 h-14 rounded-2xl bg-orange-500/20 text-orange-400 flex items-center justify-center border border-orange-500/30">
                         <User className="w-7 h-7" />
                       </div>
-                      <h4 className="font-bold text-sm text-white">Full 3D Humanoid Avatar (65-Bone Rig)</h4>
+                      <h4 className="font-bold text-sm text-white">Full 3D Humanoid Avatar</h4>
                       <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
-                        Full humanoid mesh with bone kinematics (~59 MB download). Tap below when you want to load it.
+                        Full humanoid mesh with 65-bone hand kinematics. Choose your preferred model speed below:
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => setIs3DModelStarted(true)}
-                        className="px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-400 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-orange-500/30 transition hover:scale-105 cursor-pointer"
-                      >
-                        <Play className="w-4 h-4 fill-white" />
-                        <span>Start 3D Humanoid Model (59 MB)</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAvatarMode('hologram')}
-                        className="text-xs text-slate-400 hover:text-white underline cursor-pointer"
-                      >
-                        Keep fast ⚡ ISL Hologram (Instant • 0 MB)
-                      </button>
+                      <div className="flex flex-col gap-2 w-full max-w-xs">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelected3DModelUrl('/api/avatar-model?file=mans.fbx');
+                            setIs3DModelStarted(true);
+                          }}
+                          className="w-full py-2.5 px-4 rounded-xl bg-orange-500 hover:bg-orange-400 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-orange-500/30 transition hover:scale-102 cursor-pointer"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-white" />
+                          <span>Start Studio Mans Model (59 MB)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelected3DModelUrl('/model/man.glb');
+                            setIs3DModelStarted(true);
+                          }}
+                          className="w-full py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center justify-center gap-2 transition cursor-pointer"
+                        >
+                          <span>⚡ Start Fast Lightweight Avatar (1.5 MB)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAvatarMode('hologram')}
+                          className="text-xs text-slate-400 hover:text-white underline cursor-pointer mt-1"
+                        >
+                          Keep fast ⚡ ISL Hologram (Instant • 0 MB)
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -6686,9 +6730,57 @@ function MeetingRoomContent() {
                 </div>
               ) : (
                 /* LAYOUT 3: GOOGLE MEET GRID MODE */
-                <div className="flex-1 flex flex-col lg:flex-row w-full h-full overflow-hidden gap-3 sm:gap-4 relative">
+                <div className="flex-1 flex flex-col lg:flex-row w-full h-full overflow-hidden gap-2.5 sm:gap-4 relative">
+                  {/* Mobile Quick View Selector Bar (Shown only on small screens < 1024px) */}
+                  {showSignCompanion && (
+                    <div className="flex lg:hidden items-center justify-between px-3 py-1 bg-slate-900/90 border border-slate-800 rounded-2xl shrink-0 z-20">
+                      <span className="text-[11px] font-mono text-slate-400 font-medium">View:</span>
+                      <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-xl border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setMobileViewTab('video')}
+                          className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 ${
+                            mobileViewTab === 'video'
+                              ? 'bg-orange-500 text-white shadow-xs'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <Video className="w-3 h-3" />
+                          <span>Video ({1 + remoteList.length})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMobileViewTab('companion')}
+                          className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 ${
+                            mobileViewTab === 'companion'
+                              ? 'bg-orange-500 text-white shadow-xs'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <Sparkles className="w-3 h-3 text-orange-300" />
+                          <span>3D Signer</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMobileViewTab('split')}
+                          className={`px-2 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                            mobileViewTab === 'split'
+                              ? 'bg-slate-800 text-white'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Split
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Adaptive Google Meet Video Grid for all human participants */}
-                  <div className="flex-1 w-full h-full overflow-hidden relative flex flex-col">
+                  <div
+                    className={`flex-1 w-full h-full overflow-hidden relative flex flex-col ${
+                      showSignCompanion && mobileViewTab === 'companion' ? 'hidden lg:flex' : 'flex'
+                    } ${showSignCompanion && mobileViewTab === 'split' ? 'h-1/2 lg:h-full' : ''}`}
+                  >
                     {remoteList.length === 0 ? (
                       /* Only Local User: Adaptive stage tile + Ready Card */
                       <div className="w-full h-full flex-1 relative flex items-center justify-center">
@@ -6839,9 +6931,17 @@ function MeetingRoomContent() {
                     )}
                   </div>
 
-                  {/* 3D Sign Interpreter Companion Panel (Docked to the Right) */}
+                  {/* 3D Sign Interpreter Companion Panel (Docked to the Right on Desktop, Adaptive on Mobile) */}
                   {showSignCompanion && (
-                    <aside className="w-full lg:w-96 shrink-0 h-72 lg:h-full flex flex-col animate-in slide-in-from-right duration-200">
+                    <aside
+                      className={`w-full lg:w-96 shrink-0 transition-all duration-200 flex flex-col ${
+                        mobileViewTab === 'video'
+                          ? 'hidden lg:flex lg:h-full'
+                          : mobileViewTab === 'companion'
+                          ? 'flex-1 h-full'
+                          : 'h-64 sm:h-72 lg:h-full'
+                      }`}
+                    >
                       {renderHologramTile('w-full h-full')}
                     </aside>
                   )}
@@ -6868,10 +6968,10 @@ function MeetingRoomContent() {
                               <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/40">
                                 ISL CAPTION
                               </span>
-                              <span className="text-slate-100 font-medium">&quot;{currentSentence}&quot;</span>
+                              <span className="text-slate-100 font-medium">{currentSentence}</span>
 
-                              {/* Dynamic 3D Sign Emoji Badge */}
-                              {(() => {
+                              {/* Dynamic 3D Sign Emoji Badge (Shown only for Deaf Signer guidance) */}
+                              {activeRole === 'deaf_signer' && (() => {
                                 const lower = (currentSentence || '').toLowerCase();
                                 const matchedEmoji = SIGN_EMOJIS_LIST.find((e) =>
                                   lower.includes(e.id) || lower.includes(e.name.toLowerCase().split(' ')[0])
@@ -7877,8 +7977,14 @@ function MeetingRoomContent() {
                     <input
                       type="text"
                       value={murfApiKey}
-                      onChange={(e) => setMurfApiKey(e.target.value)}
-                      placeholder="ap2_..."
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        setMurfApiKey(val);
+                        if (typeof window !== 'undefined') {
+                          localStorage.setItem('sanket_murf_api_key', val);
+                        }
+                      }}
+                      placeholder="Enter Murf AI API key (e.g. ap2_...)"
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-orange-500"
                     />
                   </div>

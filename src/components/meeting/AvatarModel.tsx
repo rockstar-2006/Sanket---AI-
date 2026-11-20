@@ -1750,25 +1750,54 @@ export function AvatarModel({
 
       {/* Loading & Error States */}
       {(isLoading || loadError) && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/90 backdrop-blur-sm text-slate-300 z-30">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/95 backdrop-blur-sm text-slate-300 z-30 p-4">
           {isLoading ? (
             <>
               <div className="w-10 h-10 rounded-full border-2 border-orange-500/20 border-t-orange-500 animate-spin" />
-              <div className="text-center px-4">
+              <div className="text-center px-4 max-w-xs">
                 <p className="text-xs font-semibold text-slate-200">{loadingStatus}</p>
-                <div className="w-40 h-1.5 bg-slate-800 rounded-full mx-auto mt-2.5 overflow-hidden">
+                <div className="w-44 h-1.5 bg-slate-800 rounded-full mx-auto mt-2.5 overflow-hidden">
                   <div
                     className="h-full bg-orange-500 transition-all duration-300 rounded-full"
                     style={{ width: `${Math.max(5, loadingProgress)}%` }}
                   />
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1 font-mono">{loadingProgress}%</p>
+                
+                {/* Instant Mobile & Low Bandwidth Fallback Choices */}
+                <div className="mt-4 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (reloadModelRef.current) {
+                        reloadModelRef.current('/model/man.glb');
+                      }
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium transition cursor-pointer border border-slate-700/80 shadow-xs"
+                  >
+                    ⚡ Switch to Lightweight Avatar (1.5 MB)
+                  </button>
+                  <p className="text-[10px] text-slate-500">
+                    Full 60 MB model takes longer on mobile network.
+                  </p>
+                </div>
               </div>
             </>
           ) : (
-            <div className="text-center p-4 space-y-2">
-              <p className="text-xs font-bold text-rose-500">Failed to Load Avatar</p>
-              <p className="text-[10px] text-slate-400 max-w-[200px] leading-relaxed">{loadError}</p>
+            <div className="text-center p-4 space-y-3 max-w-xs">
+              <p className="text-xs font-bold text-rose-400">Failed to Load Avatar Model</p>
+              <p className="text-[11px] text-slate-400 leading-relaxed">{loadError}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (reloadModelRef.current) {
+                    reloadModelRef.current('/model/man.glb');
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-white text-xs font-bold transition cursor-pointer shadow-md"
+              >
+                Load Lightweight Avatar (1.5 MB)
+              </button>
             </div>
           )}
         </div>

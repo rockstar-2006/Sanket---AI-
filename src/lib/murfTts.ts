@@ -165,9 +165,9 @@ export async function speakSentence(
     return { success: true, engineUsed: 'browser' };
   }
 
-  // Murf AI Engine with fast 2200ms timeout for real-time video meetings
+  // Murf AI Studio Speech Generation (allows up to 16s for studio audio compilation)
   const abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeoutId = abortController ? setTimeout(() => abortController.abort(), 2200) : null;
+  const timeoutId = abortController ? setTimeout(() => abortController.abort(), 16000) : null;
 
   try {
     const res = await fetch('/api/tts/murf', {

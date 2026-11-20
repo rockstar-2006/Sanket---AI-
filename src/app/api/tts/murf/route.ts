@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
       voiceId = 'en-IN-aarav',
       apiKey,
       format = 'MP3',
-      style,
       testConnection = false,
     } = body;
 
@@ -42,7 +41,7 @@ export async function POST(req: NextRequest) {
           success: false,
           error: 'No Murf AI API Key provided or configured.',
         },
-        { status: 400 }
+        { status: 200 }
       );
     }
 
@@ -56,88 +55,86 @@ export async function POST(req: NextRequest) {
           success: false,
           error: 'No text provided to synthesize.',
         },
-        { status: 400 }
+        { status: 200 }
       );
     }
 
     const startTime = Date.now();
+    const endpoint = 'https://api.murf.ai/v1/speech/generate';
 
-    // Prepare payload without invalid style parameters
-    const murfPayload: Record<string, any> = {
-      text: targetText,
+    // Direct clean payload conforming to official Murf AI Gen2 specification
+    const payload = {
       voiceId: voiceId || 'en-IN-aarav',
+      text: targetText,
       format: format || 'MP3',
       modelVersion: 'GEN2',
     };
 
-    if (style && style !== 'Conversational' && style !== 'default') {
-      murfPayload.style = style;
-    }
-
     const murfAbort = new AbortController();
-    const murfTimeout = setTimeout(() => murfAbort.abort(), 3500);
+    const murfTimeout = setTimeout(() => murfAbort.abort(), 9000);
 
-    let response: Response;
+    let successfulData: any = null;
+    let lastErrorMsg = 'Murf AI generation failed.';
+    let lastStatus = 500;
+
     try {
-      // Call Murf AI Speech Generation API with all compatible auth headers
-      response = await fetch('https://api.murf.ai/v1/speech/generate', {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
           'api-key': activeKey,
-          'token': activeKey,
-          'Authorization': `Bearer ${activeKey}`,
         },
         signal: murfAbort.signal,
-        body: JSON.stringify(murfPayload),
+        body: JSON.stringify(payload),
       });
+
+      lastStatus = response.status;
+      const responseText = await response.text();
+
+      if (response.ok) {
+        try {
+          successfulData = JSON.parse(responseText);
+        } catch {
+          lastErrorMsg = 'Murf AI returned invalid JSON.';
+        }
+      } else {
+        try {
+          const errJson = JSON.parse(responseText);
+          lastErrorMsg =
+            errJson?.errorMessage ||
+            errJson?.message ||
+            errJson?.detail ||
+            `Murf error (${response.status}): ${responseText.slice(0, 150)}`;
+        } catch {
+          lastErrorMsg = `Murf AI (${response.status}): ${responseText.slice(0, 150)}`;
+        }
+      }
+    } catch (fetchErr: any) {
+      if (fetchErr?.name === 'AbortError') {
+        lastErrorMsg = 'Murf AI took >9s to synthesize. Instant browser voice activated.';
+      } else {
+        lastErrorMsg = fetchErr?.message || 'Network error reaching Murf AI.';
+      }
     } finally {
       clearTimeout(murfTimeout);
     }
 
     const latencyMs = Date.now() - startTime;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorJson: any = null;
-      try {
-        errorJson = JSON.parse(errorText);
-      } catch {}
-
-      let errorMsg = `Murf AI API error (${response.status})`;
-      if (typeof errorJson?.errorMessage === 'string') {
-        errorMsg = errorJson.errorMessage;
-      } else if (typeof errorJson?.message === 'string') {
-        errorMsg = errorJson.message;
-      } else if (typeof errorJson?.detail === 'string') {
-        errorMsg = errorJson.detail;
-      } else if (typeof errorJson?.error === 'string') {
-        errorMsg = errorJson.error;
-      } else if (typeof errorJson?.error?.message === 'string') {
-        errorMsg = errorJson.error.message;
-      } else if (typeof errorJson?.error?.detail === 'string') {
-        errorMsg = errorJson.error.detail;
-      } else if (errorText) {
-        errorMsg = `Murf AI (${response.status}): ${errorText.slice(0, 150)}`;
-      }
-
-      console.warn('[Murf AI API Error]:', response.status, errorMsg);
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: errorMsg,
-          status: response.status,
-          latencyMs,
-        },
-        { status: response.status }
-      );
+    if (!successfulData || (!successfulData.audioFile && !successfulData.audio_file && !successfulData.encodedAudio && !successfulData.encoded_audio)) {
+      console.warn('[Murf AI API Notice]: Murf response notice:', lastStatus, lastErrorMsg);
+      // Always return HTTP 200 with success: false so client receives structured JSON without 500 Internal Server Error
+      return NextResponse.json({
+        success: false,
+        error: lastErrorMsg,
+        statusCode: lastStatus,
+        latencyMs,
+      });
     }
 
-    const data = await response.json();
-
-    const rawAudioUrl = data.audioFile || data.audio_file || null;
-    const rawAudioBase64 = data.encodedAudio || data.encoded_audio || null;
+    const rawAudioUrl = successfulData.audioFile || successfulData.audio_file || null;
+    const rawAudioBase64 = successfulData.encodedAudio || successfulData.encoded_audio || null;
     const finalAudioUrl =
       rawAudioUrl || (rawAudioBase64 ? `data:audio/mp3;base64,${rawAudioBase64}` : null);
 
@@ -150,13 +147,10 @@ export async function POST(req: NextRequest) {
       message: testConnection ? 'Murf AI voice generated successfully!' : 'Audio generated.',
     });
   } catch (err: any) {
-    console.error('[Murf TTS Endpoint Error]:', err);
-    return NextResponse.json(
-      {
-        success: false,
-        error: err.message || 'Internal server error while generating Murf speech.',
-      },
-      { status: 500 }
-    );
+    console.error('[Murf TTS Endpoint Error]:', err?.message || err);
+    return NextResponse.json({
+      success: false,
+      error: err?.message || 'Murf AI service error. Switched to instant browser speech.',
+    });
   }
 }

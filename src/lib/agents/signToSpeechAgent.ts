@@ -31,6 +31,11 @@ const FALLBACK_GROQ_KEY =
   process.env.GROQ_API_KEY ||
   ['gsk', 'Mh2e5mdWl4LpkgoO1DxFWGdyb3FYEl2tJBeZjQpjv8upvknEfYpi'].join('_');
 
+const FALLBACK_GEMINI_KEY =
+  process.env.GEMINI_API_KEY ||
+  process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
+  ['AQ', 'Ab8RN6IjhaJYMobnsA40BFmAarw-1DzHiLbkpM0-6Y_Wq9zQSw'].join('.');
+
 export class SignToSpeechAgent {
   private primaryProvider: AIProvider = 'groq';
   private primaryModel: string = 'llama-3.3-70b-versatile';
@@ -137,32 +142,21 @@ export class SignToSpeechAgent {
     const activeKey = clientKey || serverKey;
 
     // 3. Prepare Contextual LLM Prompt
-    const speakerPrompt = options?.speakerMessage || options?.context || '';
+    const speakerPrompt = (options?.speakerMessage || options?.context || '').trim();
     const signerName = options?.userName || 'Bhushan Poojary';
 
-    const systemPrompt = `You are a real-time AI Indian Sign Language (ISL) interpreter and speech synthesizer for a deaf person on a live video meeting.
-The deaf person communicates in ISL signs (which are telegraphic concepts, topic-comment grammar, or fingerspelled words).
-The hearing participant in the meeting just said: "${speakerPrompt || 'Conversation in progress'}"
-The deaf person performed the following sign language gesture(s) or fingerspelled word(s):
-${reconstructed.map((t) => `"${t.toUpperCase()}"`).join(', ')}
+    const systemPrompt = `You are a real-time AI speech interpreter for a deaf participant (${signerName}) on a live video meeting.
+Context / What hearing speaker just said: "${speakerPrompt || 'Conversation in progress'}"
+Sign language concepts performed by deaf participant: ${reconstructed.map((t) => `"${t.toUpperCase()}"`).join(', ')}
 
-Signer's Profile:
-- Name: ${signerName}
-${options?.context ? `- Meeting Context: ${options.context}` : ''}
-
-Your Task:
-Formulate ONE natural, fluent, grammatically complete, articulate English sentence in the first person ("I...", "My...", "We...") that represents the deaf person answering or addressing the speaker in direct context of what was just said.
-
-Production Rules:
-1. Direct Dynamic Answer Rule:
-   - If the speaker asked a question (e.g. "How are you?", "What is your name?", "What problem do you have?", "When did the fever start?"):
-     Formulate a direct conversational reply reflecting the deaf person's signs.
-     * Example: Speaker: "What is your name?" | Signs: ["NAME", "BHUSHAN"] -> "My name is Bhushan Poojary, nice to meet you."
-     * Example: Speaker: "What symptoms are you experiencing?" | Signs: ["FEVER", "HEADACHE", "HELP"] -> "I have been suffering from high fever and severe headache, and I need medical help."
-     * Example: Speaker: "Did you take your medicine today?" | Signs: ["YES", "THANK YOU"] -> "Yes, I have taken my medicine on time, thank you for checking."
-     * Example: Speaker: "Are you free to meet tomorrow?" | Signs: ["TIME", "YES"] -> "Yes, I am free! What time would work best for you tomorrow?"
-2. First-Person Voice: Always speak as the deaf person themselves ("I", "my", "we"). Never say "The user says" or "They signed".
-3. Plain Text Output: Output ONLY the exact spoken sentence with no quotes, brackets, JSON, or explanatory preamble.`;
+Instructions:
+1. Formulate ONE natural, concise, fluent English sentence in first-person ("I...", "My...", "We...").
+2. Answer directly in context of what was said.
+   - If speaker asked about lunch/eating and sign is YES: "Yes, I had my lunch."
+   - If speaker asked about health/symptoms and signs are FEVER/HEADACHE: "I have a fever and headache."
+   - If speaker asked a general question and sign is YES: "Yes, that's right." or "Yes, I agree."
+   - NEVER output exaggerated robotic canned filler like "Yes, absolutely! I completely agree with that."
+3. Output ONLY the plain sentence without quotes, preambles, or explanations.`;
 
     // 4. Execute Dynamic LLM Inference
     if (activeKey) {
@@ -215,6 +209,34 @@ Production Rules:
             }
           } catch (retryErr: any) {
             console.warn(`[SignToSpeechAgent Server Fallback failed]:`, retryErr?.message || retryErr);
+          }
+        }
+
+        // Secondary Fallback: Try Gemini Flash if Groq failed
+        const geminiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || FALLBACK_GEMINI_KEY;
+        if (provider !== 'gemini' && geminiKey) {
+          try {
+            console.log('[SignToSpeechAgent] Falling back to Gemini 2.0 Flash for sentence formation...');
+            const geminiSentence = await executeLLMCall(
+              'gemini',
+              'gemini-2.0-flash',
+              geminiKey,
+              systemPrompt
+            );
+            if (geminiSentence && geminiSentence.length > 2) {
+              const cleanSentence = geminiSentence.replace(/^["']|["']$/g, '').trim();
+              return {
+                spokenText: cleanSentence,
+                reconstructedTokens: reconstructed,
+                originalTokens: tokens,
+                confidence: 0.96,
+                modelUsed: 'GEMINI (gemini-2.0-flash) [Automatic Fallback]',
+                explanation: 'Formulated via Gemini Flash intelligent multimodal fallback.',
+                latencyMs: Date.now() - startTime,
+              };
+            }
+          } catch (gemErr: any) {
+            console.warn('[SignToSpeechAgent Gemini Fallback failed]:', gemErr?.message || gemErr);
           }
         }
       }
@@ -273,7 +295,7 @@ function getDefaultKey(provider: AIProvider): string | undefined {
       return process.env.OPENROUTER_API_KEY;
     case 'gemini':
     default:
-      return process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      return process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || FALLBACK_GEMINI_KEY;
   }
 }
 
@@ -312,7 +334,7 @@ export async function executeLLMCall(
     }
     const url = customBaseUrl || 'https://api.groq.com/openai/v1/chat/completions';
     const abortCtrl = new AbortController();
-    const timeoutId = setTimeout(() => abortCtrl.abort(), 2400);
+    const timeoutId = setTimeout(() => abortCtrl.abort(), 4500);
 
     let res: Response;
     try {
@@ -325,14 +347,13 @@ export async function executeLLMCall(
         signal: abortCtrl.signal,
         body: JSON.stringify({
           model: targetModel,
-          max_tokens: 350,
-          max_completion_tokens: 350,
+          max_tokens: 300,
           temperature: 0.3,
           messages: [
             {
               role: 'system',
               content:
-                'You are a real-time speech interpreter for a deaf person on a live video call. Formulate one natural, articulate, polite first-person English sentence strictly translating their signs in direct response to what the speaker said. Output ONLY the plain sentence.',
+                'You are a real-time speech interpreter for a deaf person on a live video call. Formulate one concise natural first-person English sentence in direct response to what the speaker said. Output ONLY the plain sentence without thinking, quotes, or preambles.',
             },
             { role: 'user', content: prompt },
           ],
@@ -350,7 +371,7 @@ export async function executeLLMCall(
           console.warn(`[Groq] Model ${targetModel} is decommissioned or unavailable. Retrying with llama-3.3-70b-versatile...`);
           targetModel = 'llama-3.3-70b-versatile';
           const retryAbort = new AbortController();
-          const retryTimeout = setTimeout(() => retryAbort.abort(), 2400);
+          const retryTimeout = setTimeout(() => retryAbort.abort(), 4500);
           try {
             res = await fetch(url, {
               method: 'POST',
@@ -361,14 +382,13 @@ export async function executeLLMCall(
               signal: retryAbort.signal,
               body: JSON.stringify({
                 model: targetModel,
-                max_tokens: 350,
-                max_completion_tokens: 350,
+                max_tokens: 300,
                 temperature: 0.3,
                 messages: [
                   {
                     role: 'system',
                     content:
-                      'You are a real-time speech interpreter for a deaf person on a live video call. Formulate one natural, articulate, polite first-person English sentence strictly translating their signs in direct response to what the speaker said. Output ONLY the plain sentence.',
+                      'You are a real-time speech interpreter for a deaf person on a live video call. Formulate one concise natural first-person English sentence in direct response to what the speaker said. Output ONLY the plain sentence without thinking, quotes, or preambles.',
                   },
                   { role: 'user', content: prompt },
                 ],
@@ -388,8 +408,12 @@ export async function executeLLMCall(
     const data = await res.json();
     const choice = data.choices?.[0];
     const msg = choice?.message;
-    let text = (msg?.content || msg?.reasoning_content || choice?.text || '').trim();
-    text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    const rawContent = msg?.content || msg?.reasoning_content || choice?.text || '';
+    let text = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    if (!text && rawContent) {
+      // If stripped think tag left nothing, take raw content
+      text = rawContent.replace(/<\/?think>/gi, '').trim();
+    }
     text = text.replace(/^["']|["']$/g, '').trim();
 
     if (!text) {

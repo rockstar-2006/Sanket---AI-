@@ -258,8 +258,15 @@ export function composeContextualSentence(
   if (primaryToken === 'YES' || primaryToken === 'NO') {
     const isYes = primaryToken === 'YES';
     if (callerLower.includes('lunch') || callerLower.includes('dinner') || callerLower.includes('breakfast') || callerLower.includes('food') || callerLower.includes('eat')) {
+      const foodItem = callerLower.includes('lunch')
+        ? 'lunch'
+        : callerLower.includes('dinner')
+        ? 'dinner'
+        : callerLower.includes('breakfast')
+        ? 'breakfast'
+        : 'food';
       return {
-        sentence: isYes ? "Yes, I had my food." : "No, not yet.",
+        sentence: isYes ? `Yes, I had my ${foodItem}.` : 'No, not yet.',
         source: 'contextual-template',
         intent: isYes ? 'YES_FOOD' : 'NO_FOOD',
         confidence: 0.99,
