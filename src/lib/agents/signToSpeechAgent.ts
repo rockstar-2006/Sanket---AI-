@@ -311,26 +311,36 @@ export async function executeLLMCall(
       targetModel = 'llama-3.3-70b-versatile';
     }
     const url = customBaseUrl || 'https://api.groq.com/openai/v1/chat/completions';
-    let res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${cleanKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: targetModel,
-        max_tokens: 140,
-        temperature: 0.3,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a real-time speech interpreter for a deaf person on a live video call. Formulate one natural, articulate, polite first-person English sentence strictly translating their signs in direct response to what the speaker said. Output ONLY the plain sentence.',
-          },
-          { role: 'user', content: prompt },
-        ],
-      }),
-    });
+    const abortCtrl = new AbortController();
+    const timeoutId = setTimeout(() => abortCtrl.abort(), 2400);
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${cleanKey}`,
+          'Content-Type': 'application/json',
+        },
+        signal: abortCtrl.signal,
+        body: JSON.stringify({
+          model: targetModel,
+          max_tokens: 350,
+          max_completion_tokens: 350,
+          temperature: 0.3,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are a real-time speech interpreter for a deaf person on a live video call. Formulate one natural, articulate, polite first-person English sentence strictly translating their signs in direct response to what the speaker said. Output ONLY the plain sentence.',
+            },
+            { role: 'user', content: prompt },
+          ],
+        }),
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     // If decommissioned model or model error, retry once with official production flagship
     if (!res.ok) {
@@ -339,26 +349,34 @@ export async function executeLLMCall(
         if (targetModel !== 'llama-3.3-70b-versatile' && targetModel !== 'openai/gpt-oss-120b') {
           console.warn(`[Groq] Model ${targetModel} is decommissioned or unavailable. Retrying with llama-3.3-70b-versatile...`);
           targetModel = 'llama-3.3-70b-versatile';
-          res = await fetch(url, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${cleanKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: targetModel,
-              max_tokens: 140,
-              temperature: 0.3,
-              messages: [
-                {
-                  role: 'system',
-                  content:
-                    'You are a real-time speech interpreter for a deaf person on a live video call. Formulate one natural, articulate, polite first-person English sentence strictly translating their signs in direct response to what the speaker said. Output ONLY the plain sentence.',
-                },
-                { role: 'user', content: prompt },
-              ],
-            }),
-          });
+          const retryAbort = new AbortController();
+          const retryTimeout = setTimeout(() => retryAbort.abort(), 2400);
+          try {
+            res = await fetch(url, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${cleanKey}`,
+                'Content-Type': 'application/json',
+              },
+              signal: retryAbort.signal,
+              body: JSON.stringify({
+                model: targetModel,
+                max_tokens: 350,
+                max_completion_tokens: 350,
+                temperature: 0.3,
+                messages: [
+                  {
+                    role: 'system',
+                    content:
+                      'You are a real-time speech interpreter for a deaf person on a live video call. Formulate one natural, articulate, polite first-person English sentence strictly translating their signs in direct response to what the speaker said. Output ONLY the plain sentence.',
+                  },
+                  { role: 'user', content: prompt },
+                ],
+              }),
+            });
+          } finally {
+            clearTimeout(retryTimeout);
+          }
         }
       }
       if (!res.ok) {
@@ -368,9 +386,15 @@ export async function executeLLMCall(
     }
 
     const data = await res.json();
-    const msg = data.choices?.[0]?.message;
-    const text = (msg?.content || msg?.reasoning_content || '').trim();
-    if (!text) throw new Error('Groq returned an empty response.');
+    const choice = data.choices?.[0];
+    const msg = choice?.message;
+    let text = (msg?.content || msg?.reasoning_content || choice?.text || '').trim();
+    text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    text = text.replace(/^["']|["']$/g, '').trim();
+
+    if (!text) {
+      throw new Error('Groq returned an empty response.');
+    }
     return text;
   }
 

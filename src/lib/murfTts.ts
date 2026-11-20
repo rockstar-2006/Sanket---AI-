@@ -157,7 +157,7 @@ export async function speakSentence(
     activeAudioElement = null;
   }
 
-  const requestedEngine = options?.engine || 'murf';
+  const requestedEngine = options?.engine || 'browser';
 
   if (requestedEngine === 'browser') {
     options?.onStart?.();
@@ -165,10 +165,15 @@ export async function speakSentence(
     return { success: true, engineUsed: 'browser' };
   }
 
+  // Murf AI Engine with fast 2200ms timeout for real-time video meetings
+  const abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = abortController ? setTimeout(() => abortController.abort(), 2200) : null;
+
   try {
     const res = await fetch('/api/tts/murf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: abortController ? abortController.signal : undefined,
       body: JSON.stringify({
         text: cleanText,
         voiceId: options?.voiceId || 'en-IN-aarav',
@@ -176,6 +181,8 @@ export async function speakSentence(
         format: 'MP3',
       }),
     });
+
+    if (timeoutId) clearTimeout(timeoutId);
 
     if (res.ok) {
       const data = await res.json();
@@ -192,7 +199,7 @@ export async function speakSentence(
         };
 
         audio.onerror = () => {
-          console.warn('[Murf AI Audio] Audio element error, playing Web Speech fallback');
+          console.warn('[Murf AI Audio] Playback error, playing instant Web Speech fallback');
           speakWithBrowserWebSpeech(cleanText, options?.onEnd);
         };
 
@@ -200,11 +207,12 @@ export async function speakSentence(
         return { success: true, engineUsed: 'murf', audioUrl: data.audioUrl };
       }
     }
-  } catch (err) {
-    console.warn('[Murf AI] Generation failed, initiating seamless Web Speech fallback:', err);
+  } catch (err: any) {
+    if (timeoutId) clearTimeout(timeoutId);
+    console.warn('[Murf AI] Generation slow or timed out, executing instant real-time browser speech:', err?.name === 'AbortError' ? 'Timeout > 2.2s' : err?.message);
   }
 
-  // Fallback if Murf API returned error or was unavailable
+  // Instant Real-Time Fallback if Murf API times out or is slow
   options?.onStart?.();
   speakWithBrowserWebSpeech(cleanText, options?.onEnd);
   return { success: true, engineUsed: 'browser' };

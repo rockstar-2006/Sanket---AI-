@@ -38,24 +38,18 @@ const ThreeDHandsViewer = nextDynamic(
   { ssr: false }
 );
 
-interface ConvertedFrame {
-  frameIndex: number;
-  timeSec: number;
-  rightHand: { x: number; y: number; z: number }[] | null;
-  leftHand: { x: number; y: number; z: number }[] | null;
-}
+import {
+  CustomSignRecord,
+  LandmarkFrame,
+  loadCustomSignsFromClientStorage,
+  persistCustomSignToClientStorage,
+  bulkPersistCustomSigns,
+  removeCustomSignFromClientStorage,
+  getLocalStorageSigns,
+} from '@/lib/customSignsStorage';
 
-interface SavedCustomSign {
-  id: string;
-  token: string;
-  label: string;
-  category: string;
-  description: string;
-  totalFrames: number;
-  durationSec: number;
-  createdAt: string;
-  frames: ConvertedFrame[];
-}
+type ConvertedFrame = LandmarkFrame;
+type SavedCustomSign = CustomSignRecord;
 
 const COMMON_PARQUET_WORDS = [
   { word: 'doctor', label: 'Doctor', category: 'Medical', parquet: 'Dataset/doctor/MVI_0045.parquet' },
@@ -139,8 +133,13 @@ export default function VideoTo3DHandsStudioPage() {
     'Left wrist held steady with palm facing upward. Right index and middle fingers rhythmically tap the inner pulse twice with distinct clinical cadence.'
   );
 
-  // Saved Signs Library
-  const [savedSigns, setSavedSigns] = useState<SavedCustomSign[]>([]);
+  // Saved Signs Library (initialized from client storage so signs never disappear on page refresh)
+  const [savedSigns, setSavedSigns] = useState<SavedCustomSign[]>(() => {
+    if (typeof window !== 'undefined') {
+      return getLocalStorageSigns();
+    }
+    return [];
+  });
   const [activeLoadedSign, setActiveLoadedSign] = useState<SavedCustomSign | null>(null);
   const [statusNotification, setStatusNotification] = useState<string | null>(null);
 
@@ -155,6 +154,18 @@ export default function VideoTo3DHandsStudioPage() {
   // =============================================================================
   useEffect(() => {
     loadParquetDatasetWord('doctor');
+
+    loadCustomSignsFromClientStorage().then((localSigns) => {
+      if (localSigns && localSigns.length > 0) {
+        setSavedSigns((prev) => {
+          const map = new Map<string, SavedCustomSign>();
+          prev.forEach((s) => map.set(s.id, s));
+          localSigns.forEach((s) => map.set(s.id, s));
+          return Array.from(map.values());
+        });
+      }
+    });
+
     fetchSavedSigns();
   }, []);
 
@@ -181,13 +192,38 @@ export default function VideoTo3DHandsStudioPage() {
 
   const fetchSavedSigns = async () => {
     try {
-      const res = await fetch('/api/custom-signs');
-      if (res.ok) {
-        const data = await res.json();
-        setSavedSigns(data.signs || []);
-      }
+      const localSigns = await loadCustomSignsFromClientStorage();
+      let serverSigns: SavedCustomSign[] = [];
+      try {
+        const res = await fetch('/api/custom-signs');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.signs)) {
+            serverSigns = data.signs;
+          }
+        }
+      } catch {}
+
+      const signMap = new Map<string, SavedCustomSign>();
+      serverSigns.forEach((s) => signMap.set(s.id, s));
+      localSigns.forEach((s) => {
+        if (!signMap.has(s.id)) {
+          signMap.set(s.id, s);
+          fetch('/api/custom-signs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(s),
+          }).catch(() => {});
+        }
+      });
+
+      const merged = Array.from(signMap.values());
+      setSavedSigns(merged);
+      await bulkPersistCustomSigns(merged);
     } catch (err) {
-      console.warn('Failed to load custom signs from server:', err);
+      console.warn('Failed to load custom signs from server, using local storage:', err);
+      const fallback = await loadCustomSignsFromClientStorage();
+      if (fallback.length > 0) setSavedSigns(fallback);
     }
   };
 
@@ -364,26 +400,42 @@ export default function VideoTo3DHandsStudioPage() {
   const handleSaveSign = async () => {
     if (extractedFrames.length === 0) return;
 
+    const cleanToken = signLabel.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const id = `custom_${cleanToken}_${Date.now()}`;
+    const newSign: SavedCustomSign = {
+      id,
+      token: cleanToken,
+      label: signLabel,
+      category: signCategory,
+      description: signDescription,
+      totalFrames: extractedFrames.length,
+      durationSec: Number((extractedFrames.length / 30).toFixed(2)),
+      createdAt: new Date().toISOString(),
+      frames: extractedFrames,
+    };
+
+    // 1. Immediately persist to client storage (IndexedDB + LocalStorage) -> NEVER REMOVED ON REFRESH
+    await persistCustomSignToClientStorage(newSign);
+    setSavedSigns((prev) => [newSign, ...prev.filter((s) => s.id !== newSign.id)]);
+
     try {
       const res = await fetch('/api/custom-signs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: signLabel.toLowerCase().replace(/\s+/g, '_'),
-          label: signLabel,
-          category: signCategory,
-          description: signDescription,
-          frames: extractedFrames,
-        }),
+        body: JSON.stringify(newSign),
       });
 
       if (res.ok) {
         setStatusNotification(`✓ Saved "${signLabel}" to your account custom signs!`);
-        fetchSavedSigns();
-        setTimeout(() => setStatusNotification(null), 4000);
+      } else {
+        setStatusNotification(`✓ Saved "${signLabel}" safely to local library!`);
       }
+      fetchSavedSigns();
+      setTimeout(() => setStatusNotification(null), 4000);
     } catch (err) {
-      console.error('Failed to save sign:', err);
+      console.warn('Backend sync note, sign safely preserved in browser IndexedDB:', err);
+      setStatusNotification(`✓ Saved "${signLabel}" safely to local library!`);
+      setTimeout(() => setStatusNotification(null), 4000);
     }
   };
 

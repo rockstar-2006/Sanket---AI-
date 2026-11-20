@@ -1045,12 +1045,12 @@ function MeetingRoomContent() {
   const aiConfigRef = useRef<CustomAIConfig>(DEFAULT_AI_CONFIG);
   const lastSpeakerSpeechRef = useRef<string>('');
 
-  // ─── Murf AI Natural Voice Agent States ─────────────────────────────────────
-  const [ttsEngine, setTtsEngine] = useState<'murf' | 'browser'>('murf');
+  // ─── Real-Time Voice Synthesis States (Default: Browser 0ms for instant real-time speech) ──
+  const [ttsEngine, setTtsEngine] = useState<'murf' | 'browser'>('browser');
   const [murfVoiceId, setMurfVoiceId] = useState<string>('en-IN-aarav');
   const [murfApiKey, setMurfApiKey] = useState<string>('ap2_38568798-de60-4b13-8b8f-2861d725d236');
   const [testVoiceStatus, setTestVoiceStatus] = useState<{ loading: boolean; success?: boolean; message?: string } | null>(null);
-  const ttsEngineRef = useRef<'murf' | 'browser'>('murf');
+  const ttsEngineRef = useRef<'murf' | 'browser'>('browser');
   const murfVoiceIdRef = useRef<string>('en-IN-aarav');
   const murfApiKeyRef = useRef<string>('ap2_38568798-de60-4b13-8b8f-2861d725d236');
 
@@ -7805,25 +7805,33 @@ function MeetingRoomContent() {
                 <div className="flex items-center bg-slate-900 rounded-lg p-0.5 border border-slate-800">
                   <button
                     type="button"
-                    onClick={() => setTtsEngine('murf')}
-                    className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${
+                    onClick={() => {
+                      setTtsEngine('browser');
+                      if (typeof window !== 'undefined') localStorage.setItem('sanket_tts_engine', 'browser');
+                    }}
+                    className={`px-2.5 py-1 rounded text-[10px] font-bold transition cursor-pointer flex items-center gap-1 ${
+                      ttsEngine === 'browser'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Zero-latency browser speech synthesis (Instant 0ms, ideal for real-time video calls)"
+                  >
+                    <span>Browser (Instant 0ms)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTtsEngine('murf');
+                      if (typeof window !== 'undefined') localStorage.setItem('sanket_tts_engine', 'murf');
+                    }}
+                    className={`px-2.5 py-1 rounded text-[10px] font-bold transition cursor-pointer flex items-center gap-1 ${
                       ttsEngine === 'murf'
                         ? 'bg-orange-500 text-white shadow-xs'
                         : 'text-slate-400 hover:text-white'
                     }`}
+                    title="Murf AI Studio voiceovers (Authentic Indian accents, requires active cloud connection)"
                   >
-                    Murf AI
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTtsEngine('browser')}
-                    className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${
-                      ttsEngine === 'browser'
-                        ? 'bg-slate-800 text-white shadow-xs'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Browser
+                    <span>Murf AI Studio</span>
                   </button>
                 </div>
               </div>

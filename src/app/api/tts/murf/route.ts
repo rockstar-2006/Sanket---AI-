@@ -74,17 +74,26 @@ export async function POST(req: NextRequest) {
       murfPayload.style = style;
     }
 
-    // Call Murf AI Speech Generation API with all compatible auth headers
-    const response = await fetch('https://api.murf.ai/v1/speech/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': activeKey,
-        'token': activeKey,
-        'Authorization': `Bearer ${activeKey}`,
-      },
-      body: JSON.stringify(murfPayload),
-    });
+    const murfAbort = new AbortController();
+    const murfTimeout = setTimeout(() => murfAbort.abort(), 3500);
+
+    let response: Response;
+    try {
+      // Call Murf AI Speech Generation API with all compatible auth headers
+      response = await fetch('https://api.murf.ai/v1/speech/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': activeKey,
+          'token': activeKey,
+          'Authorization': `Bearer ${activeKey}`,
+        },
+        signal: murfAbort.signal,
+        body: JSON.stringify(murfPayload),
+      });
+    } finally {
+      clearTimeout(murfTimeout);
+    }
 
     const latencyMs = Date.now() - startTime;
 

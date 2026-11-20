@@ -40,24 +40,15 @@ import {
   HandLandmarkResult, 
   LandmarkPoint3D 
 } from '@/lib/islCameraRecognizer';
-
-interface LandmarkFrame {
-  frameIndex: number;
-  timeSec: number;
-  rightHand: LandmarkPoint3D[] | null;
-  leftHand: LandmarkPoint3D[] | null;
-}
-
-interface CustomSignRecord {
-  id: string;
-  token: string;
-  label: string;
-  category: string;
-  totalFrames: number;
-  durationSec: number;
-  createdAt: string;
-  frames: LandmarkFrame[];
-}
+import {
+  CustomSignRecord,
+  LandmarkFrame,
+  loadCustomSignsFromClientStorage,
+  persistCustomSignToClientStorage,
+  bulkPersistCustomSigns,
+  removeCustomSignFromClientStorage,
+  getLocalStorageSigns,
+} from '@/lib/customSignsStorage';
 
 function dist3D(a: LandmarkPoint3D, b: LandmarkPoint3D): number {
   const dx = a.x - b.x;
@@ -253,8 +244,13 @@ export default function OpenSourceLandmarkDatasetPage() {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Database saved signs
-  const [savedSigns, setSavedSigns] = useState<CustomSignRecord[]>([]);
+  // Database saved signs (initialized synchronously from client storage to prevent disappearing on refresh)
+  const [savedSigns, setSavedSigns] = useState<CustomSignRecord[]>(() => {
+    if (typeof window !== 'undefined') {
+      return getLocalStorageSigns();
+    }
+    return [];
+  });
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
@@ -300,20 +296,66 @@ export default function OpenSourceLandmarkDatasetPage() {
     targetTestSignIdRef.current = targetTestSignId;
   }, [targetTestSignId]);
 
-  // 1. Fetch Saved Signs from Database
+  // 1. Fetch & Reconcile Saved Signs (IndexedDB + LocalStorage + Server DB)
   const fetchSavedSigns = useCallback(async () => {
     try {
-      const res = await fetch('/api/custom-signs');
-      if (res.ok) {
-        const data = await res.json();
-        setSavedSigns(data.signs || []);
+      // Step A: Load client-stored signs (guaranteed to survive restarts & refreshes)
+      const localSigns = await loadCustomSignsFromClientStorage();
+
+      // Step B: Fetch from server API
+      let serverSigns: CustomSignRecord[] = [];
+      try {
+        const res = await fetch('/api/custom-signs');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.signs)) {
+            serverSigns = data.signs;
+          }
+        }
+      } catch (netErr) {
+        console.warn('[Custom Signs] Server fetch note:', netErr);
       }
+
+      // Step C: Bidirectional merge - ensure no locally recorded sign is ever lost
+      const signMap = new Map<string, CustomSignRecord>();
+      serverSigns.forEach((s) => signMap.set(s.id, s));
+      localSigns.forEach((s) => {
+        if (!signMap.has(s.id)) {
+          signMap.set(s.id, s);
+          // Auto-sync missing signs back to server in background
+          fetch('/api/custom-signs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(s),
+          }).catch(() => {});
+        }
+      });
+
+      const merged = Array.from(signMap.values());
+      setSavedSigns(merged);
+      await bulkPersistCustomSigns(merged);
     } catch (e) {
-      console.warn('Could not fetch custom signs:', e);
+      console.warn('Could not fetch custom signs, using local client storage:', e);
+      const fallback = await loadCustomSignsFromClientStorage();
+      if (fallback.length > 0) {
+        setSavedSigns(fallback);
+      }
     }
   }, []);
 
   useEffect(() => {
+    // Immediate IndexedDB load
+    loadCustomSignsFromClientStorage().then((initial) => {
+      if (initial && initial.length > 0) {
+        setSavedSigns((prev) => {
+          const map = new Map<string, CustomSignRecord>();
+          prev.forEach((s) => map.set(s.id, s));
+          initial.forEach((s) => map.set(s.id, s));
+          return Array.from(map.values());
+        });
+      }
+    });
+
     fetchSavedSigns();
   }, [fetchSavedSigns]);
 
@@ -574,30 +616,44 @@ export default function OpenSourceLandmarkDatasetPage() {
     if (!cleanLabel) return;
 
     setIsSaving(true);
+    const cleanToken = cleanLabel.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const id = `custom_${cleanToken}_${Date.now()}`;
+
+    const newSign: CustomSignRecord = {
+      id,
+      token: cleanToken,
+      label: cleanLabel,
+      category: signCategory.trim() || 'Custom',
+      description: `Authentic on-device MediaPipe 21-node landmark dataset capture for sign ${cleanLabel}`,
+      totalFrames: recordedFrames.length,
+      durationSec: Number(((recordedFrames.length - 1) / 30).toFixed(2)),
+      createdAt: new Date().toISOString(),
+      frames: recordedFrames,
+    };
+
+    // 1. Immediately persist to client storage (IndexedDB + LocalStorage) -> GUARANTEED TO PERSIST ON REFRESH
+    await persistCustomSignToClientStorage(newSign);
+    setSavedSigns((prev) => [newSign, ...prev.filter((s) => s.id !== newSign.id)]);
+
+    // 2. Also send to server API
     try {
       const res = await fetch('/api/custom-signs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: cleanLabel.toLowerCase().replace(/\s+/g, '_'),
-          label: cleanLabel,
-          category: signCategory.trim() || 'Custom',
-          description: `Authentic on-device MediaPipe 21-node landmark dataset capture for sign ${cleanLabel}`,
-          frames: recordedFrames,
-        }),
+        body: JSON.stringify(newSign),
       });
 
       if (res.ok) {
-        triggerToast('success', `✓ Saved sign "${cleanLabel}" to database with ${recordedFrames.length} frames!`);
-        fetchSavedSigns();
+        triggerToast('success', `✓ Saved sign "${cleanLabel}" to Library with ${recordedFrames.length} frames!`);
       } else {
-        triggerToast('error', 'Error saving to database. Please retry.');
+        triggerToast('success', `✓ Saved sign "${cleanLabel}" safely to local library!`);
       }
     } catch (e) {
-      console.error('Save error:', e);
-      triggerToast('error', 'Failed to communicate with database API.');
+      console.warn('[Custom Sign Save] Server sync note (saved safely locally):', e);
+      triggerToast('success', `✓ Saved sign "${cleanLabel}" safely to local library!`);
     } finally {
       setIsSaving(false);
+      fetchSavedSigns();
     }
   };
 
@@ -609,19 +665,19 @@ export default function OpenSourceLandmarkDatasetPage() {
 
     setIsDeletingId(id);
     try {
-      const res = await fetch(`/api/custom-signs?id=${encodeURIComponent(id)}`, {
+      // 1. Remove from local storage immediately
+      await removeCustomSignFromClientStorage(id);
+      setSavedSigns((prev) => prev.filter((s) => s.id !== id));
+
+      // 2. Send DELETE to server API
+      await fetch(`/api/custom-signs?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
 
-      if (res.ok) {
-        triggerToast('success', `Deleted sign "${label}" from database.`);
-        fetchSavedSigns();
-      } else {
-        triggerToast('error', 'Failed to delete sign.');
-      }
+      triggerToast('success', `Deleted sign "${label}" from library.`);
     } catch (e) {
       console.error('Delete error:', e);
-      triggerToast('error', 'Network error during delete.');
+      triggerToast('error', 'Error removing sign.');
     } finally {
       setIsDeletingId(null);
     }
