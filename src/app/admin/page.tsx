@@ -34,7 +34,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
-  AlertTriangle
+  AlertTriangle,
+  Sparkles
 } from 'lucide-react';
 import { ISL_DATASET_WORDS, ISL_DATASET_METRICS, DatasetWordItem } from '@/lib/datasetCatalog';
 

@@ -1652,22 +1652,21 @@ function MeetingRoomContent() {
     }
 
     const interval = setInterval(() => {
-      setMeetingDurationSec((prev) => {
-        const nextSec = prev + 1;
-        meetingDurationRef.current = nextSec;
-        const currentMinute = Math.floor(nextSec / 60);
+      meetingDurationRef.current += 1;
+      const nextSec = meetingDurationRef.current;
+      setMeetingDurationSec(nextSec);
 
-        // Deduct 10 credits at each completed 1-minute milestone (same unified rate as telecom relay)
-        if (currentMinute > lastBilledMinuteRef.current) {
-          lastBilledMinuteRef.current = currentMinute;
-          const hasCredits = deductCredits(10, `Accessible Video Meeting (${currentMinute} min active)`);
-          if (!hasCredits) {
-            setToastMessage('Credits depleted. Please top up your wallet to continue.');
-            openRechargeModal();
-          }
+      const currentMinute = Math.floor(nextSec / 60);
+
+      // Deduct 10 credits at each completed 1-minute milestone (same unified rate as telecom relay)
+      if (currentMinute > lastBilledMinuteRef.current) {
+        lastBilledMinuteRef.current = currentMinute;
+        const hasCredits = deductCredits(10, `Accessible Video Meeting (${currentMinute} min active)`);
+        if (!hasCredits) {
+          setToastMessage('Credits depleted. Please top up your wallet to continue.');
+          openRechargeModal();
         }
-        return nextSec;
-      });
+      }
     }, 1000);
 
     return () => clearInterval(interval);
@@ -2148,14 +2147,7 @@ function MeetingRoomContent() {
   const stopAllPlaybackRef = useRef<() => void>(() => {});
   const executeTranslateAndSignRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
 
-  // ─── 1. Call Duration Timer ────────────────────────────────────────────────
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setMeetingDurationSec((sec) => sec + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
+  // ─── 1. Call Duration Formatter ───────────────────────────────────────────
   const formatTime = (totalSec: number) => {
     const mins = Math.floor(totalSec / 60);
     const secs = totalSec % 60;
