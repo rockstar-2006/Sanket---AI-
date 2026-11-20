@@ -101,6 +101,7 @@ import {
 } from '@/lib/islCameraRecognizer';
 import { ISLOnnxRecognizer } from '@/lib/islOnnxRecognizer';
 import { createVirtualCameraStream, VirtualStreamController } from '@/lib/virtualCameraStream';
+import { speakSentence, speakWithBrowserWebSpeech, MURF_VOICE_CATALOG, MurfVoiceOption } from '@/lib/murfTts';
 
 export type AIProvider = 'groq' | 'gemini' | 'claude' | 'openai' | 'openrouter';
 
@@ -1044,6 +1045,25 @@ function MeetingRoomContent() {
   const aiConfigRef = useRef<CustomAIConfig>(DEFAULT_AI_CONFIG);
   const lastSpeakerSpeechRef = useRef<string>('');
 
+  // ─── Murf AI Natural Voice Agent States ─────────────────────────────────────
+  const [ttsEngine, setTtsEngine] = useState<'murf' | 'browser'>('murf');
+  const [murfVoiceId, setMurfVoiceId] = useState<string>('en-IN-aarav');
+  const [murfApiKey, setMurfApiKey] = useState<string>('ap2_38568798-de60-4b13-8b8f-2861d725d236');
+  const [testVoiceStatus, setTestVoiceStatus] = useState<{ loading: boolean; success?: boolean; message?: string } | null>(null);
+  const ttsEngineRef = useRef<'murf' | 'browser'>('murf');
+  const murfVoiceIdRef = useRef<string>('en-IN-aarav');
+  const murfApiKeyRef = useRef<string>('ap2_38568798-de60-4b13-8b8f-2861d725d236');
+
+  useEffect(() => {
+    ttsEngineRef.current = ttsEngine;
+  }, [ttsEngine]);
+  useEffect(() => {
+    murfVoiceIdRef.current = murfVoiceId;
+  }, [murfVoiceId]);
+  useEffect(() => {
+    murfApiKeyRef.current = murfApiKey;
+  }, [murfApiKey]);
+
   useEffect(() => {
     aiConfigRef.current = aiConfig;
   }, [aiConfig]);
@@ -1051,6 +1071,22 @@ function MeetingRoomContent() {
   useEffect(() => {
     try {
       if (typeof window !== 'undefined') {
+        const savedEngine = localStorage.getItem('sanket_tts_engine') as 'murf' | 'browser';
+        if (savedEngine) {
+          setTtsEngine(savedEngine);
+          ttsEngineRef.current = savedEngine;
+        }
+        const savedVoice = localStorage.getItem('sanket_murf_voice_id');
+        if (savedVoice) {
+          setMurfVoiceId(savedVoice);
+          murfVoiceIdRef.current = savedVoice;
+        }
+        const savedMurfKey = localStorage.getItem('sanket_murf_api_key');
+        if (savedMurfKey) {
+          setMurfApiKey(savedMurfKey);
+          murfApiKeyRef.current = savedMurfKey;
+        }
+
         const savedConfig = localStorage.getItem('sanket_custom_ai_config');
         if (savedConfig) {
           const parsed = JSON.parse(savedConfig);
@@ -1113,8 +1149,11 @@ function MeetingRoomContent() {
           localStorage.removeItem('sanket_custom_api_key');
         }
         localStorage.setItem('sanket_custom_model', configToSave.model || 'llama-3.3-70b-versatile');
+        localStorage.setItem('sanket_tts_engine', ttsEngine);
+        localStorage.setItem('sanket_murf_voice_id', murfVoiceId);
+        localStorage.setItem('sanket_murf_api_key', murfApiKey);
       }
-      setToastMessage(`AI Engine Active: ${configToSave.provider.toUpperCase()} (${configToSave.model})`);
+      setToastMessage(`Settings Saved: ${configToSave.provider.toUpperCase()} (${configToSave.model}) • Voice: ${ttsEngine === 'murf' ? 'Murf AI' : 'Browser'}`);
       setTimeout(() => setToastMessage(null), 3000);
       setShowSettingsModal(false);
     } catch {}
@@ -1199,6 +1238,52 @@ function MeetingRoomContent() {
     }
   };
 
+  const handleTestMurfVoice = async () => {
+    setTestVoiceStatus({ loading: true });
+    try {
+      const res = await fetch('/api/tts/murf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testConnection: true,
+          voiceId: murfVoiceId,
+          apiKey: murfApiKey,
+        }),
+      });
+      const data = await res.json();
+      const audioSource = data?.audioUrl || (data?.audioBase64 ? `data:audio/mp3;base64,${data.audioBase64}` : null);
+      if (res.ok && data?.success && audioSource) {
+        setTestVoiceStatus({
+          loading: false,
+          success: true,
+          message: `Natural voice synthesized in ${data.latencyMs || 0}ms! Playing audio preview...`,
+        });
+        const audio = new Audio(audioSource);
+        audio.play().catch((playErr) => {
+          console.warn('[Audio Playback Warning]:', playErr);
+        });
+      } else {
+        const errorDetail =
+          typeof data?.error === 'string'
+            ? data.error
+            : typeof data?.message === 'string'
+              ? data.message
+              : 'Failed to generate Murf speech preview.';
+        setTestVoiceStatus({
+          loading: false,
+          success: false,
+          message: errorDetail,
+        });
+      }
+    } catch (err: any) {
+      setTestVoiceStatus({
+        loading: false,
+        success: false,
+        message: err.message || 'Network error connecting to Murf AI.',
+      });
+    }
+  };
+
   const [canvasReady, setCanvasReady] = useState<number>(0);
 
   // Extract custom words from user name & meeting context for instant auto-complete
@@ -1220,9 +1305,8 @@ function MeetingRoomContent() {
     }
   }, [displayName]);
 
-  const [avatarMode, setAvatarMode] = useState<'hologram' | '3d_avatar' | 'emojis'>(
-    userRole === 'speaking_interviewer' ? '3d_avatar' : 'hologram'
-  );
+  const [avatarMode, setAvatarMode] = useState<'hologram' | '3d_avatar' | 'emojis'>('hologram');
+  const [is3DModelStarted, setIs3DModelStarted] = useState<boolean>(false);
   const [selectedSignEmojiId, setSelectedSignEmojiId] = useState<string>('doctor');
   const [showSignEmojiPicker, setShowSignEmojiPicker] = useState<boolean>(false);
   const [floatingReaction, setFloatingReaction] = useState<{ id: string; name: string; icon: string } | null>(null);
@@ -1638,7 +1722,12 @@ function MeetingRoomContent() {
   const [isLinkCopied, setIsLinkCopied] = useState(false);
   const [meetingDurationSec, setMeetingDurationSec] = useState(0);
   const [participantCount, setParticipantCount] = useState(1);
-  const [showSignCompanion, setShowSignCompanion] = useState(true);
+  const [showSignCompanion, setShowSignCompanion] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 1024;
+    }
+    return true;
+  });
   const [joinUrl, setJoinUrl] = useState('');
   const [clockTime, setClockTime] = useState<string>('');
 
@@ -2661,7 +2750,9 @@ function MeetingRoomContent() {
       if (data.sentence && data.sentence.trim()) {
         lastSpeakerSpeechRef.current = data.sentence.trim();
       }
-      setShowSignCompanion(true);
+      if (activeRoleRef.current === 'deaf_signer') {
+        setShowSignCompanion(true);
+      }
       setAvatarMode('hologram');
       setInterimTranscript('');
       setCurrentSentence(data.sentence);
@@ -2715,25 +2806,13 @@ function MeetingRoomContent() {
       };
       setMeetingNotesLog((prev) => [...prev, remoteSignerNote]);
 
-      // If local peer is speaking interviewer or hearing participant, speak aloud via TTS
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window && cleanSpeech) {
-        try {
-          window.speechSynthesis.resume();
-          window.speechSynthesis.cancel();
-          const utter = new SpeechSynthesisUtterance(cleanSpeech);
-          utter.rate = 1.0;
-          utter.pitch = 1.0;
-          utter.volume = 1.0;
-          utter.lang = 'en-US';
-          const voices = window.speechSynthesis.getVoices();
-          if (voices && voices.length > 0) {
-            const preferred = voices.find((v) => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.default)) || voices.find((v) => v.lang.startsWith('en'));
-            if (preferred) utter.voice = preferred;
-          }
-          window.speechSynthesis.speak(utter);
-        } catch (e) {
-          console.warn('[TTS] Synthesis audio notice:', e);
-        }
+      // If local peer is speaking interviewer or hearing participant, speak aloud via Murf AI Natural Voice
+      if (cleanSpeech) {
+        speakSentence(cleanSpeech, {
+          engine: ttsEngineRef.current,
+          voiceId: murfVoiceIdRef.current,
+          apiKey: murfApiKeyRef.current,
+        }).catch(() => {});
       }
 
       // Add to in-call messages drawer
@@ -3257,6 +3336,13 @@ function MeetingRoomContent() {
     const text = queryText.trim();
     if (!text) return;
 
+    // Immediately stop any lingering playback (e.g. earlier fingerspelling) so reply is instantaneous!
+    if (stopAllPlaybackRef.current) {
+      stopAllPlaybackRef.current();
+    }
+    setAnimationQueue([]);
+    setCurrentAction(null);
+
     setIsProcessing(true);
     setCurrentSentence(text);
     setInterimTranscript('');
@@ -3389,25 +3475,13 @@ function MeetingRoomContent() {
       .replace(/\s+/g, ' ')
       .trim();
 
-    // 1. Speak aloud via browser Web Speech API
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window && cleanSpokenSentence) {
-      try {
-        window.speechSynthesis.resume();
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(cleanSpokenSentence);
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-        utterance.volume = 1.0;
-        utterance.lang = 'en-US';
-        const voices = window.speechSynthesis.getVoices();
-        if (voices && voices.length > 0) {
-          const preferred = voices.find((v) => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.default)) || voices.find((v) => v.lang.startsWith('en'));
-          if (preferred) utterance.voice = preferred;
-        }
-        window.speechSynthesis.speak(utterance);
-      } catch (e) {
-        console.warn('[TTS] Synthesis audio notice:', e);
-      }
+    // 1. Speak aloud via Murf AI Natural Voice (with automatic Web Speech fallback)
+    if (cleanSpokenSentence) {
+      speakSentence(cleanSpokenSentence, {
+        engine: ttsEngineRef.current,
+        voiceId: murfVoiceIdRef.current,
+        apiKey: murfApiKeyRef.current,
+      }).catch(() => {});
     }
 
     // 2. Broadcast to other participants via Socket.IO
@@ -4212,7 +4286,7 @@ function MeetingRoomContent() {
       setIsSignToSpeechActive(false);
       setIsMicOn(true);
       setShowCaptions(true);
-      setAvatarMode('3d_avatar');
+      setAvatarMode('hologram');
       setToastMessage('Joined as Hearing Speaker • Voice-to-Sign active');
       setTimeout(() => {
         if (!isListeningRef.current) {
@@ -4252,7 +4326,7 @@ function MeetingRoomContent() {
       setIsSignToSpeechActive(false);
       setIsMicOn(true);
       setShowCaptions(true);
-      setAvatarMode('3d_avatar');
+      setAvatarMode('hologram');
       if (!isListeningRef.current) {
         toggleListening();
       }
@@ -4828,7 +4902,7 @@ function MeetingRoomContent() {
                   type="button"
                   onClick={() => {
                     setSelectedLobbyRole('speaking_interviewer');
-                    setAvatarMode('3d_avatar');
+                    setAvatarMode('hologram');
                     setIsSignToSpeechActive(false);
                   }}
                   className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
@@ -5241,6 +5315,134 @@ function MeetingRoomContent() {
                 </button>
               </div>
 
+              {/* ─── Murf AI Natural Voice Agent Section (Lobby Theme) ───────── */}
+              <div className="border border-slate-200 rounded-2xl p-3.5 bg-slate-50/80 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center border border-orange-200">
+                      <Volume2 className="w-4 h-4 text-orange-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                        <span>Natural Voice Agent</span>
+                        <span className="px-1.5 py-0.2 rounded bg-orange-100 text-orange-700 border border-orange-200 text-[9px] font-mono font-bold">
+                          Murf AI Studio
+                        </span>
+                      </h4>
+                      <p className="text-[10px] text-slate-500">Ultra-realistic Indian &amp; multilingual human voices</p>
+                    </div>
+                  </div>
+
+                  {/* Voice Engine Toggle */}
+                  <div className="flex items-center bg-white rounded-lg p-0.5 border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setTtsEngine('murf')}
+                      className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${
+                        ttsEngine === 'murf'
+                          ? 'bg-orange-500 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Murf AI
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTtsEngine('browser')}
+                      className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${
+                        ttsEngine === 'browser'
+                          ? 'bg-slate-800 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Browser
+                    </button>
+                  </div>
+                </div>
+
+                {ttsEngine === 'murf' && (
+                  <div className="space-y-2.5">
+                    {/* Voice Persona Selector */}
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-700 font-mono flex items-center justify-between">
+                        <span>Select Voice Persona:</span>
+                        <span className="text-[10px] text-slate-500">Authentic Indian Accents</span>
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        {MURF_VOICE_CATALOG.slice(0, 6).map((voice) => (
+                          <button
+                            key={voice.id}
+                            type="button"
+                            onClick={() => setMurfVoiceId(voice.id)}
+                            className={`p-2 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                              murfVoiceId === voice.id
+                                ? 'bg-orange-50 border-orange-500 text-slate-900 ring-1 ring-orange-500/50'
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-xs text-slate-900">{voice.name}</span>
+                              <span className="text-[9px] font-mono px-1 rounded bg-slate-100 text-slate-600">
+                                {voice.gender === 'Male' ? '♂' : '♀'}
+                              </span>
+                            </div>
+                            <span className="text-[9px] text-slate-500 mt-0.5 truncate">{voice.language}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Murf API Key Input */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-slate-700 font-mono">Murf AI API Key</label>
+                        <span className="text-[10px] text-emerald-600 font-mono font-semibold">Active Key Configured</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={murfApiKey}
+                        onChange={(e) => setMurfApiKey(e.target.value)}
+                        placeholder="ap2_..."
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-mono placeholder-slate-400 focus:outline-none focus:border-orange-500 shadow-xs"
+                      />
+                    </div>
+
+                    {/* Murf Test Result */}
+                    {testVoiceStatus && (
+                      <div
+                        className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 animate-in fade-in duration-150 ${
+                          testVoiceStatus.loading
+                            ? 'bg-slate-100 border-slate-200 text-slate-700'
+                            : testVoiceStatus.success
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                              : 'bg-rose-50 border-rose-300 text-rose-950'
+                        }`}
+                      >
+                        {testVoiceStatus.loading ? (
+                          <RotateCcw className="w-3.5 h-3.5 text-orange-500 animate-spin shrink-0" />
+                        ) : testVoiceStatus.success ? (
+                          <Volume2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                        )}
+                        <span className="text-[11px] font-mono truncate">{testVoiceStatus.message}</span>
+                      </div>
+                    )}
+
+                    {/* Test Murf Voice Button */}
+                    <button
+                      type="button"
+                      onClick={handleTestMurfVoice}
+                      disabled={testVoiceStatus?.loading}
+                      className="w-full py-2 px-3 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Volume2 className="w-3.5 h-3.5 text-orange-600" />
+                      <span>{testVoiceStatus?.loading ? 'Generating Natural Speech...' : 'Preview Sample Voice with Murf AI'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* Action Buttons */}
               <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
                 <button
@@ -5337,6 +5539,18 @@ function MeetingRoomContent() {
           >
             <HandMetal className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Signer Focus</span>
+          </button>
+          <button
+            onClick={() => setShowSignCompanion((prev) => !prev)}
+            className={`px-2.5 sm:px-3 py-1.5 rounded-full flex items-center gap-1.5 transition font-medium cursor-pointer ${
+              showSignCompanion
+                ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40 font-bold'
+                : 'text-slate-400 hover:text-white'
+            }`}
+            title={showSignCompanion ? 'Hide 3D Avatar' : 'Show 3D Avatar'}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span className="text-[11px] sm:text-xs">Avatar: {showSignCompanion ? 'On' : 'Off'}</span>
           </button>
           {(isScreenSharing || Array.from(remoteParticipants.values()).some((p) => p.isScreenSharing)) && (
             <button
@@ -5498,9 +5712,9 @@ function MeetingRoomContent() {
                 >
                   <Cpu className="w-4 h-4 text-orange-400 shrink-0" />
                   <div className="flex-1">
-                    <div className="font-semibold text-white">Groq AI Engine &amp; BYOK Key</div>
+                    <div className="font-semibold text-white">AI Engine &amp; Murf Voice Settings</div>
                     <div className="text-[10px] text-slate-400 font-mono">
-                      {aiConfig.provider.toUpperCase()} &bull; {aiConfig.model}
+                      {aiConfig.provider.toUpperCase()} &bull; {ttsEngine === 'murf' ? 'Murf AI Natural Voice' : 'Browser Voice'}
                     </div>
                   </div>
                 </button>
@@ -6153,6 +6367,14 @@ function MeetingRoomContent() {
                       <RotateCcw className="w-3.5 h-3.5" />
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => setShowSignCompanion(false)}
+                    className="p-1 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+                    title="Hide Avatar Companion"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
 
@@ -6269,14 +6491,41 @@ function MeetingRoomContent() {
                     avatarMode === '3d_avatar' ? 'block' : 'hidden'
                   }`}
                 >
-                  <AvatarModel
-                    isSpeaking={isListening}
-                    signWord={activeToken}
-                    isVisible={avatarMode === '3d_avatar'}
-                    modelUrl={selected3DModelUrl}
-                    colorMode={avatarColorMode}
-                    className="w-full h-full"
-                  />
+                  {is3DModelStarted ? (
+                    <AvatarModel
+                      isSpeaking={isListening}
+                      signWord={activeToken}
+                      isVisible={avatarMode === '3d_avatar'}
+                      modelUrl={selected3DModelUrl}
+                      colorMode={avatarColorMode}
+                      className="w-full h-full"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center gap-3 bg-gradient-to-b from-slate-950 to-slate-900 select-none">
+                      <div className="w-14 h-14 rounded-2xl bg-orange-500/20 text-orange-400 flex items-center justify-center border border-orange-500/30">
+                        <User className="w-7 h-7" />
+                      </div>
+                      <h4 className="font-bold text-sm text-white">Full 3D Humanoid Avatar (65-Bone Rig)</h4>
+                      <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
+                        Full humanoid mesh with bone kinematics (~59 MB download). Tap below when you want to load it.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setIs3DModelStarted(true)}
+                        className="px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-400 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-orange-500/30 transition hover:scale-105 cursor-pointer"
+                      >
+                        <Play className="w-4 h-4 fill-white" />
+                        <span>Start 3D Humanoid Model (59 MB)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAvatarMode('hologram')}
+                        className="text-xs text-slate-400 hover:text-white underline cursor-pointer"
+                      >
+                        Keep fast ⚡ ISL Hologram (Instant • 0 MB)
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* 3. 3D Animated Volumetric Sign Emoji System */}
@@ -6601,71 +6850,96 @@ function MeetingRoomContent() {
 
               {/* Google Meet Live Subtitles Floating Overlay Banner */}
               {showCaptions && (interimTranscript || currentSentence) && (
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-none max-w-2xl w-[92%] sm:w-auto px-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
-                  <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-800 rounded-2xl px-5 py-3 shadow-2xl flex items-center gap-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-orange-400 animate-pulse shrink-0 shadow-lg shadow-orange-400/50" />
-                    <div className="text-xs sm:text-sm font-medium text-slate-100 leading-snug">
-                      {interimTranscript ? (
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                            LIVE SPEECH
-                          </span>
-                          <span className="text-emerald-300 font-semibold">&quot;{interimTranscript}&quot;</span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col gap-1.5">
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-auto max-w-2xl w-[92%] sm:w-auto px-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                  <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-800 rounded-2xl px-5 py-3 shadow-2xl flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <span className="w-2.5 h-2.5 rounded-full bg-orange-400 animate-pulse shrink-0 shadow-lg shadow-orange-400/50" />
+                      <div className="text-xs sm:text-sm font-medium text-slate-100 leading-snug flex-1 min-w-0">
+                        {interimTranscript ? (
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/40">
-                              ISL CAPTION
+                            <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                              LIVE SPEECH
                             </span>
-                            <span className="text-slate-100 font-medium">&quot;{currentSentence}&quot;</span>
-
-                            {/* Dynamic 3D Sign Emoji Badge */}
-                            {(() => {
-                              const lower = (currentSentence || '').toLowerCase();
-                              const matchedEmoji = SIGN_EMOJIS_LIST.find((e) =>
-                                lower.includes(e.id) || lower.includes(e.name.toLowerCase().split(' ')[0])
-                              );
-                              if (!matchedEmoji) return null;
-                              return (
-                                <span
-                                  key={matchedEmoji.id}
-                                  className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/50 text-amber-300 font-mono text-[10px] font-bold shadow-xs animate-in zoom-in-90 duration-200"
-                                >
-                                  <span>{matchedEmoji.icon}</span>
-                                  <span>3D Sign: {matchedEmoji.name}</span>
-                                </span>
-                              );
-                            })()}
+                            <span className="text-emerald-300 font-semibold">&quot;{interimTranscript}&quot;</span>
                           </div>
-                          {currentAction && (currentAction.source === 'fingerspell_letter' || currentAction.type === 'letter') && (
-                            <div className="flex items-center gap-1.5 flex-wrap font-mono text-xs pt-0.5">
-                              <span className="text-amber-400 font-bold text-[11px] flex items-center gap-1">
-                                <Hand className="w-3 h-3 text-amber-400" /> Fingerspelling:
+                        ) : (
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/40">
+                                ISL CAPTION
                               </span>
-                              <span className="text-white font-extrabold">
-                                {(currentAction.originalWord || currentAction.token).toUpperCase()}:
-                              </span>
-                              {(currentAction.originalWord || currentAction.token).toUpperCase().split('').map((char, cIdx) => {
-                                const isActive = char === currentAction.token.toUpperCase();
+                              <span className="text-slate-100 font-medium">&quot;{currentSentence}&quot;</span>
+
+                              {/* Dynamic 3D Sign Emoji Badge */}
+                              {(() => {
+                                const lower = (currentSentence || '').toLowerCase();
+                                const matchedEmoji = SIGN_EMOJIS_LIST.find((e) =>
+                                  lower.includes(e.id) || lower.includes(e.name.toLowerCase().split(' ')[0])
+                                );
+                                if (!matchedEmoji) return null;
                                 return (
                                   <span
-                                    key={cIdx}
-                                    className={`px-1.5 py-0.5 rounded text-xs font-black transition-all ${
-                                      isActive
-                                        ? 'bg-amber-400 text-slate-950 ring-1 ring-amber-300 scale-105 shadow-sm shadow-amber-400/40'
-                                        : 'bg-slate-800 text-slate-300 border border-slate-700'
-                                    }`}
+                                    key={matchedEmoji.id}
+                                    className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/50 text-amber-300 font-mono text-[10px] font-bold shadow-xs animate-in zoom-in-90 duration-200"
                                   >
-                                    {char}
+                                    <span>{matchedEmoji.icon}</span>
+                                    <span>3D Sign: {matchedEmoji.name}</span>
                                   </span>
                                 );
-                              })}
+                              })()}
                             </div>
-                          )}
-                        </div>
-                      )}
+                            {activeRole === 'deaf_signer' && currentAction && (currentAction.source === 'fingerspell_letter' || currentAction.type === 'letter') && (
+                              <div className="flex items-center gap-1.5 flex-wrap font-mono text-xs pt-0.5">
+                                <span className="text-amber-400 font-bold text-[11px] flex items-center gap-1">
+                                  <Hand className="w-3 h-3 text-amber-400" /> Fingerspelling:
+                                </span>
+                                <span className="text-white font-extrabold">
+                                  {(currentAction.originalWord || currentAction.token).toUpperCase()}:
+                                </span>
+                                {(currentAction.originalWord || currentAction.token).toUpperCase().split('').map((char, cIdx) => {
+                                  const isActive = char === currentAction.token.toUpperCase();
+                                  return (
+                                    <span
+                                      key={cIdx}
+                                      className={`px-1.5 py-0.5 rounded text-xs font-black transition-all ${
+                                        isActive
+                                          ? 'bg-amber-400 text-slate-950 ring-1 ring-amber-300 scale-105 shadow-sm shadow-amber-400/40'
+                                          : 'bg-slate-800 text-slate-300 border border-slate-700'
+                                      }`}
+                                    >
+                                      {char}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
+
+                    {/* Instant Reply Button for Hearing Speaker (Even during Fingerspelling) */}
+                    {activeRole === 'speaking_interviewer' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!isListening) {
+                            toggleListening();
+                          }
+                          setToastMessage('Microphone active: Speak now to reply in ISL...');
+                          setTimeout(() => setToastMessage(null), 3000);
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition cursor-pointer shrink-0 ${
+                          isListening
+                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/30'
+                            : 'bg-sky-500 hover:bg-sky-400 text-white shadow-sky-500/25'
+                        }`}
+                        title="Click to speak your reply immediately"
+                      >
+                        <Mic className={`w-3.5 h-3.5 ${isListening ? 'animate-pulse' : ''}`} />
+                        <span>{isListening ? 'Speaking... (Reply)' : 'Reply (Speak)'}</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -7507,6 +7781,153 @@ function MeetingRoomContent() {
                 <Wand2 className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Test Sign Sentence</span>
               </button>
+            </div>
+
+            {/* ─── Murf AI Natural Voice Agent Section ─────────────────────── */}
+            <div className="border border-slate-800 rounded-2xl p-3.5 bg-slate-950/80 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-orange-500/20 text-orange-400 flex items-center justify-center border border-orange-500/30">
+                    <Volume2 className="w-4 h-4 text-orange-400" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs text-white flex items-center gap-1.5">
+                      <span>Natural Voice Agent</span>
+                      <span className="px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-400 border border-orange-500/40 text-[9px] font-mono font-bold">
+                        Murf AI Studio
+                      </span>
+                    </h4>
+                    <p className="text-[10px] text-slate-400">Ultra-realistic Indian &amp; multilingual human voices</p>
+                  </div>
+                </div>
+
+                {/* Voice Engine Toggle */}
+                <div className="flex items-center bg-slate-900 rounded-lg p-0.5 border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setTtsEngine('murf')}
+                    className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${
+                      ttsEngine === 'murf'
+                        ? 'bg-orange-500 text-white shadow-xs'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Murf AI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTtsEngine('browser')}
+                    className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${
+                      ttsEngine === 'browser'
+                        ? 'bg-slate-800 text-white shadow-xs'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Browser
+                  </button>
+                </div>
+              </div>
+
+              {ttsEngine === 'murf' && (
+                <div className="space-y-2.5">
+                  {/* Voice Persona Selector */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-300 font-mono flex items-center justify-between">
+                      <span>Select Voice Persona:</span>
+                      <span className="text-[10px] text-slate-500">Authentic Indian Accents</span>
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                      {MURF_VOICE_CATALOG.slice(0, 6).map((voice) => (
+                        <button
+                          key={voice.id}
+                          type="button"
+                          onClick={() => setMurfVoiceId(voice.id)}
+                          className={`p-2 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                            murfVoiceId === voice.id
+                              ? 'bg-orange-500/20 border-orange-500 text-white ring-1 ring-orange-500/50'
+                              : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-white">{voice.name}</span>
+                            <span className="text-[9px] font-mono px-1 rounded bg-slate-800 text-slate-400">
+                              {voice.gender === 'Male' ? '♂' : '♀'}
+                            </span>
+                          </div>
+                          <span className="text-[9px] text-slate-400 mt-0.5 truncate">{voice.language}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Murf API Key Input */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-300 font-mono">Murf AI API Key</label>
+                      <span className="text-[10px] text-emerald-400 font-mono">Active Key Configured</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={murfApiKey}
+                      onChange={(e) => setMurfApiKey(e.target.value)}
+                      placeholder="ap2_..."
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+
+                  {/* Murf Test Result */}
+                  {testVoiceStatus && (
+                    <div
+                      className={`p-2.5 rounded-xl border text-xs flex items-start gap-2 animate-in fade-in duration-150 ${
+                        testVoiceStatus.loading
+                          ? 'bg-slate-900 border-slate-800 text-slate-300'
+                          : testVoiceStatus.success
+                            ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-200'
+                            : 'bg-rose-950/60 border-rose-500/50 text-rose-200'
+                      }`}
+                    >
+                      {testVoiceStatus.loading ? (
+                        <RotateCcw className="w-3.5 h-3.5 text-orange-400 animate-spin shrink-0 mt-0.5" />
+                      ) : testVoiceStatus.success ? (
+                        <Volume2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                      )}
+                      <span className="text-[11px] font-mono break-words leading-relaxed flex-1">
+                        {testVoiceStatus.message}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Test Murf Voice Button */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleTestMurfVoice}
+                      disabled={testVoiceStatus?.loading}
+                      className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-orange-500/20 to-amber-500/20 hover:from-orange-500/30 hover:to-amber-500/30 text-orange-300 border border-orange-500/40 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Volume2 className="w-3.5 h-3.5 text-orange-400" />
+                      <span>{testVoiceStatus?.loading ? 'Generating Natural Speech...' : 'Preview Sample Voice with Murf AI'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        speakWithBrowserWebSpeech('Namaste! Browser natural voice fallback is working perfectly in Sanket.');
+                        setTestVoiceStatus({
+                          loading: false,
+                          success: true,
+                          message: 'Testing browser natural voice fallback... (Playing audio)',
+                        });
+                      }}
+                      className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition flex items-center justify-center gap-1 cursor-pointer"
+                      title="Test standard browser speech engine"
+                    >
+                      <span>Test Browser</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Action Buttons */}

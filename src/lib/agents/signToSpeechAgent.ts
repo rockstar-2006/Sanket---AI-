@@ -362,7 +362,8 @@ export async function executeLLMCall(
         }
       }
       if (!res.ok) {
-        throw new Error(parseApiError('Groq', res.status, errText));
+        const retryErrText = await res.text().catch(() => '');
+        throw new Error(parseApiError('Groq', res.status, retryErrText || errText));
       }
     }
 

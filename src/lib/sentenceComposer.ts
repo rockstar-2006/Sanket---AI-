@@ -59,28 +59,28 @@ const CONTEXT_KNOWLEDGE_GRAPH: ContextualRules = {
       PERFECT: "Perfect! Looking forward to catching up.",
     },
     defaultTokenMap: {
-      HELLO: "Hello! Good to see you. How are you doing today?",
-      'HOW ARE YOU': "How are you doing today? Hope everything is going well with you.",
-      THANK: "Thank you so much! I really appreciate your support.",
-      YES: "Yes, absolutely! I completely agree with that.",
-      NO: "No, that doesn't work for me right now, but thank you for asking.",
-      WAIT: "Please wait for just a moment, I will be right back with you.",
-      PLEASE: "Could you please help me with that whenever you have time?",
-      HELP: "Could you please give me a quick hand with this?",
-      FOOD: "I'm thinking of getting some food. Are you hungry too?",
-      WATER: "Could I please get a glass of drinking water?",
-      TIME: "Do you know what time it is right now?",
-      HOUSE: "I am heading back home now. Talk to you soon!",
-      CAR: "I am in the car and on my way right now.",
-      MEETING: "Let's schedule a video call or meeting to discuss this.",
-      DOCTOR: "I am feeling a bit unwell and need to consult a doctor today.",
-      'GOOD MORNING': "Good morning! Wishing you a wonderful and blessed day ahead.",
-      'GOOD NIGHT': "Good night! Sleep well, take care and talk to you tomorrow.",
-      'I LOVE YOU': "I love you and appreciate everything you do for me!",
-      'CALL ME': "Please give me a phone call whenever you are free.",
-      BOOK: "Let's review the notes and read through this together.",
-      PERFECT: "That is absolutely perfect, thank you so much!",
-      HAPPY: "I am feeling very happy and positive today!",
+      HELLO: "Hello, good to see you.",
+      'HOW ARE YOU': "How are you doing today?",
+      THANK: "Thank you so much.",
+      YES: "Yes, that's right.",
+      NO: "No, not right now.",
+      WAIT: "Please wait a moment.",
+      PLEASE: "Please help me with this.",
+      HELP: "I need some help.",
+      FOOD: "I would like to have some food.",
+      WATER: "Could I get some water, please?",
+      TIME: "What time is it right now?",
+      HOUSE: "I am at home.",
+      CAR: "I am traveling in a car.",
+      MEETING: "Let's connect in this meeting.",
+      DOCTOR: "I need to consult a doctor.",
+      'GOOD MORNING': "Good morning! Hope you have a wonderful day.",
+      'GOOD NIGHT': "Good night, take care.",
+      'I LOVE YOU': "Thank you, appreciate your support!",
+      'CALL ME': "Please give me a call whenever you are free.",
+      BOOK: "Let's review the book and notes.",
+      PERFECT: "That sounds perfect, thank you.",
+      HAPPY: "I am feeling very happy today.",
     }
   },
 
@@ -250,6 +250,57 @@ export function composeContextualSentence(
       sentence: `I am spelling ${cleanWord}.`,
       source: 'contextual-template',
       intent: 'SPELLED_WORD',
+      confidence: 0.95,
+    };
+  }
+
+  // 1b. Direct Contextual Question Answering for YES / NO
+  if (primaryToken === 'YES' || primaryToken === 'NO') {
+    const isYes = primaryToken === 'YES';
+    if (callerLower.includes('lunch') || callerLower.includes('dinner') || callerLower.includes('breakfast') || callerLower.includes('food') || callerLower.includes('eat')) {
+      return {
+        sentence: isYes ? "Yes, I had my food." : "No, not yet.",
+        source: 'contextual-template',
+        intent: isYes ? 'YES_FOOD' : 'NO_FOOD',
+        confidence: 0.99,
+      };
+    }
+    if (callerLower.includes('medicine') || callerLower.includes('tablet') || callerLower.includes('dose') || callerLower.includes('prescription')) {
+      return {
+        sentence: isYes ? "Yes, I have taken my medicine." : "No, I haven't taken it yet.",
+        source: 'contextual-template',
+        intent: isYes ? 'YES_MEDICINE' : 'NO_MEDICINE',
+        confidence: 0.99,
+      };
+    }
+    if (callerLower.includes('doctor') || callerLower.includes('hospital') || callerLower.includes('clinic')) {
+      return {
+        sentence: isYes ? "Yes, I will consult the doctor." : "No, not right now.",
+        source: 'contextual-template',
+        intent: isYes ? 'YES_DOCTOR' : 'NO_DOCTOR',
+        confidence: 0.99,
+      };
+    }
+    if (callerLower.includes('ready') || callerLower.includes('start')) {
+      return {
+        sentence: isYes ? "Yes, I am ready." : "No, give me a moment.",
+        source: 'contextual-template',
+        intent: isYes ? 'YES_READY' : 'NO_READY',
+        confidence: 0.99,
+      };
+    }
+    if (isGreetingQuestion) {
+      return {
+        sentence: isYes ? "Yes, I am doing well, thank you." : "I am feeling a bit tired today.",
+        source: 'contextual-template',
+        intent: isYes ? 'YES_GREETING' : 'NO_GREETING',
+        confidence: 0.99,
+      };
+    }
+    return {
+      sentence: isYes ? "Yes, that's right." : "No, not right now.",
+      source: 'contextual-template',
+      intent: isYes ? 'YES' : 'NO',
       confidence: 0.95,
     };
   }
@@ -444,11 +495,12 @@ export function composeContextualSentence(
     }
   }
 
-  // 6. Universal Polite Verbalization
+  // 6. Universal Natural Verbalization
+  const cleanTokens = tokens.map((t) => t.toLowerCase().replace(/[^a-z0-9]/g, '')).filter(Boolean).join(' ');
   return {
-    sentence: `Yes, ${tokens.join(' ').toLowerCase()}. Let me assist you with that right away.`,
+    sentence: cleanTokens ? cleanTokens.charAt(0).toUpperCase() + cleanTokens.slice(1) + '.' : '',
     source: 'direct',
     intent: 'GENERIC',
-    confidence: 0.80,
+    confidence: 0.85,
   };
 }
