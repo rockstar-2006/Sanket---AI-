@@ -511,45 +511,44 @@ export const Navbar: React.FC = () => {
                 </Link>
               )}
 
-              {/* User Profile or PWA Install Action */}
-              <div className="flex items-center justify-between text-xs pt-1">
-                {user ? (
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-2 truncate pr-2">
-                      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0 font-heading shadow-xs">
-                        {(profile?.displayName || user.email || 'U').charAt(0).toUpperCase()}
-                      </div>
-                      <span className="text-[11px] font-mono text-slate-300 truncate max-w-[160px]">
-                        {user.email}
-                      </span>
-                    </div>
+              {/* PWA Direct Install Action Button (Available to all users) */}
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new Event('open-pwa-install'));
+                  }
+                }}
+                className="w-full py-2.5 px-3 rounded-xl bg-[#111726] hover:bg-[#162035] text-slate-200 border border-slate-800 hover:border-orange-500/40 font-heading font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+              >
+                <Download className="w-3.5 h-3.5 text-orange-400" />
+                <span>Install Sanket AI App</span>
+              </button>
 
-                    <button
-                      onClick={() => {
-                        setMenuOpen(false);
-                        logout();
-                      }}
-                      className="text-rose-400 hover:text-rose-300 font-heading font-bold text-xs cursor-pointer flex items-center gap-1 shrink-0 px-2.5 py-1 rounded-lg hover:bg-rose-500/10 transition"
-                    >
-                      <LogOut className="w-3 h-3" />
-                      <span>Exit</span>
-                    </button>
+              {/* User Profile Info */}
+              {user && (
+                <div className="flex items-center justify-between w-full pt-1">
+                  <div className="flex items-center gap-2 truncate pr-2">
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0 font-heading shadow-xs">
+                      {(profile?.displayName || user.email || 'U').charAt(0).toUpperCase()}
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-300 truncate max-w-[160px]">
+                      {user.email}
+                    </span>
                   </div>
-                ) : (
+
                   <button
                     onClick={() => {
                       setMenuOpen(false);
-                      if (typeof window !== 'undefined') {
-                        window.dispatchEvent(new Event('open-pwa-install'));
-                      }
+                      logout();
                     }}
-                    className="w-full py-2.5 px-3 rounded-xl bg-[#111726] hover:bg-[#162035] text-slate-200 border border-slate-800 font-heading font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+                    className="text-rose-400 hover:text-rose-300 font-heading font-bold text-xs cursor-pointer flex items-center gap-1 shrink-0 px-2.5 py-1 rounded-lg hover:bg-rose-500/10 transition"
                   >
-                    <Download className="w-3.5 h-3.5 text-orange-400" />
-                    <span>Install Offline App</span>
+                    <LogOut className="w-3 h-3" />
+                    <span>Exit</span>
                   </button>
-                )}
-              </div>
+                </div>
+              )}
 
             </div>
 

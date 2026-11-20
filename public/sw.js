@@ -4,7 +4,7 @@
  * while never intercepting or stalling dynamic Next.js navigation or WebRTC.
  */
 
-const CACHE_NAME = 'sanket-pwa-v2.0';
+const CACHE_NAME = 'sanket-pwa-v3.0';
 
 // Essential offline fallback assets only (never cache dynamic HTML routes like '/')
 const PRECACHE_ASSETS = [

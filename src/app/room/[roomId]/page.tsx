@@ -83,6 +83,12 @@ import {
   QrCode,
   Info,
   Zap,
+  Cpu,
+  Key,
+  ChevronUp,
+  ChevronDown,
+  AlertCircle,
+  Wand2,
 } from 'lucide-react';
 import { QrInviteModal } from '@/components/meeting/QrInviteModal';
 import {
@@ -95,6 +101,52 @@ import {
 } from '@/lib/islCameraRecognizer';
 import { ISLOnnxRecognizer } from '@/lib/islOnnxRecognizer';
 import { createVirtualCameraStream, VirtualStreamController } from '@/lib/virtualCameraStream';
+
+export type AIProvider = 'groq' | 'gemini' | 'claude' | 'openai' | 'openrouter';
+
+export interface CustomAIConfig {
+  provider: AIProvider;
+  model: string;
+  apiKey: string;
+  customBaseUrl?: string;
+}
+
+const DEFAULT_AI_CONFIG: CustomAIConfig = {
+  provider: 'groq',
+  model: 'llama-3.3-70b-versatile',
+  apiKey: '',
+  customBaseUrl: '',
+};
+
+const PROVIDER_MODELS: Record<AIProvider, { id: string; name: string; shortName: string }[]> = {
+  groq: [
+    { id: 'llama-3.3-70b-versatile', name: 'Meta Llama 3.3 70B Versatile (Flagship)', shortName: 'Llama 3.3 70B' },
+    { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B (Production - 500 T/s)', shortName: 'GPT OSS 120B' },
+    { id: 'openai/gpt-oss-20b', name: 'GPT OSS 20B (Ultra-Fast 1000 T/s)', shortName: 'GPT OSS 20B' },
+    { id: 'llama-3.1-8b-instant', name: 'Meta Llama 3.1 8B Instant (560 T/s)', shortName: 'Llama 3.1 8B' },
+    { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B (Production)', shortName: 'Qwen 3.8 27B' },
+  ],
+  gemini: [
+    { id: 'gemini-2.0-flash', name: 'Google Gemini 2.0 Flash (Next-Gen)', shortName: 'Gemini 2.0 Flash' },
+    { id: 'gemini-1.5-flash', name: 'Google Gemini 1.5 Flash (Ultra Fast)', shortName: 'Gemini 1.5 Flash' },
+    { id: 'gemini-1.5-pro', name: 'Google Gemini 1.5 Pro (Deep Reasoning)', shortName: 'Gemini 1.5 Pro' },
+  ],
+  claude: [
+    { id: 'claude-3-7-sonnet-20250219', name: 'Anthropic Claude 3.7 Sonnet (Hybrid Reasoning)', shortName: 'Claude 3.7 Sonnet' },
+    { id: 'claude-3-5-sonnet-20241022', name: 'Anthropic Claude 3.5 Sonnet v2 (Recommended)', shortName: 'Claude 3.5 Sonnet' },
+    { id: 'claude-3-5-haiku-20241022', name: 'Anthropic Claude 3.5 Haiku (Lightning Fast)', shortName: 'Claude 3.5 Haiku' },
+  ],
+  openai: [
+    { id: 'gpt-4o-mini', name: 'OpenAI GPT-4o Mini (Fast & Affordable)', shortName: 'GPT-4o Mini' },
+    { id: 'gpt-4o', name: 'OpenAI GPT-4o (Flagship Omni)', shortName: 'GPT-4o' },
+    { id: 'o3-mini', name: 'OpenAI o3-mini (Reasoning Engine)', shortName: 'o3-mini' },
+  ],
+  openrouter: [
+    { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B via OpenRouter', shortName: 'Llama 3.3' },
+    { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet via OpenRouter', shortName: 'Claude 3.5' },
+    { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3 via OpenRouter', shortName: 'DeepSeek V3' },
+  ],
+};
 
 const AvatarModel = nextDynamic(
   () => import('@/components/meeting/AvatarModel').then((m) => m.AvatarModel),
@@ -976,40 +1028,178 @@ function MeetingRoomContent() {
 
   // ─── Custom User AI Settings (BYOK: Bring Your Own API Key & Model) ───────────
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
+  const [aiConfig, setAiConfig] = useState<CustomAIConfig>(DEFAULT_AI_CONFIG);
+  const [tempConfig, setTempConfig] = useState<CustomAIConfig>(DEFAULT_AI_CONFIG);
   const [customApiKey, setCustomApiKey] = useState<string>('');
-  const [customModel, setCustomModel] = useState<string>('gemini-2.0-flash');
-  const [canvasReady, setCanvasReady] = useState<number>(0);
+  const [customModel, setCustomModel] = useState<string>('llama-3.3-70b-versatile');
+  const [showApiKey, setShowApiKey] = useState<boolean>(false);
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
+  const [testStatus, setTestStatus] = useState<{ loading: boolean; success?: boolean; message?: string } | null>(null);
+  const [testSynthesisStatus, setTestSynthesisStatus] = useState<{
+    loading: boolean;
+    success?: boolean;
+    sentence?: string;
+    message?: string;
+  } | null>(null);
+  const aiConfigRef = useRef<CustomAIConfig>(DEFAULT_AI_CONFIG);
+  const lastSpeakerSpeechRef = useRef<string>('');
+
+  useEffect(() => {
+    aiConfigRef.current = aiConfig;
+  }, [aiConfig]);
 
   useEffect(() => {
     try {
       if (typeof window !== 'undefined') {
-        const savedKey = localStorage.getItem('sanket_custom_api_key') || '';
-        const savedModel = localStorage.getItem('sanket_custom_model') || 'gemini-2.0-flash';
+        const savedConfig = localStorage.getItem('sanket_custom_ai_config');
+        if (savedConfig) {
+          const parsed = JSON.parse(savedConfig);
+          if (parsed.provider === 'groq') {
+            if (!parsed.model || parsed.model.includes('gemma') || parsed.model.includes('mixtral') || parsed.model.includes('undefined')) {
+              parsed.model = 'llama-3.3-70b-versatile';
+            }
+          }
+          setAiConfig(parsed);
+          setTempConfig(parsed);
+          aiConfigRef.current = parsed;
+          setCustomApiKey(parsed.apiKey || '');
+          setCustomModel(parsed.model || 'llama-3.3-70b-versatile');
+        } else {
+          const savedKey = localStorage.getItem('sanket_custom_api_key') || '';
+          let savedModel = localStorage.getItem('sanket_custom_model') || 'llama-3.3-70b-versatile';
+          if (savedModel.includes('gemma') || savedModel.includes('mixtral')) {
+            savedModel = 'llama-3.3-70b-versatile';
+          }
+          const inferredProvider: AIProvider = savedKey.startsWith('gsk_')
+            ? 'groq'
+            : savedKey.startsWith('AIzaSy')
+              ? 'gemini'
+              : savedKey.startsWith('sk-ant')
+                ? 'claude'
+                : savedKey.startsWith('sk-')
+                  ? 'openai'
+                  : 'groq';
+
+          const initial: CustomAIConfig = {
+            provider: inferredProvider,
+            model: inferredProvider === 'groq' ? 'llama-3.3-70b-versatile' : savedModel,
+            apiKey: savedKey,
+          };
+          setAiConfig(initial);
+          setTempConfig(initial);
+          aiConfigRef.current = initial;
+          setCustomApiKey(savedKey);
+          setCustomModel(initial.model);
+        }
         const savedContext = sessionStorage.getItem('sanket_meeting_context') || '';
-        if (savedKey) setCustomApiKey(savedKey);
-        if (savedModel) setCustomModel(savedModel);
         if (savedContext) setMeetingContext(savedContext);
       }
     } catch {}
   }, []);
 
-  const saveAiSettings = (apiKey: string, model: string) => {
-    setCustomApiKey(apiKey.trim());
-    setCustomModel(model.trim());
+  const saveAiSettings = (newConfig?: CustomAIConfig) => {
+    const configToSave = newConfig || tempConfig;
+    setAiConfig(configToSave);
+    aiConfigRef.current = configToSave;
+    setCustomApiKey(configToSave.apiKey || '');
+    setCustomModel(configToSave.model || 'llama-3.3-70b-versatile');
+
     try {
       if (typeof window !== 'undefined') {
-        if (apiKey.trim()) {
-          localStorage.setItem('sanket_custom_api_key', apiKey.trim());
+        localStorage.setItem('sanket_custom_ai_config', JSON.stringify(configToSave));
+        if (configToSave.apiKey?.trim()) {
+          localStorage.setItem('sanket_custom_api_key', configToSave.apiKey.trim());
         } else {
           localStorage.removeItem('sanket_custom_api_key');
         }
-        localStorage.setItem('sanket_custom_model', model.trim());
+        localStorage.setItem('sanket_custom_model', configToSave.model || 'llama-3.3-70b-versatile');
       }
-      setToastMessage('AI Key & Model Settings Saved!');
+      setToastMessage(`AI Engine Active: ${configToSave.provider.toUpperCase()} (${configToSave.model})`);
       setTimeout(() => setToastMessage(null), 3000);
       setShowSettingsModal(false);
     } catch {}
   };
+
+  const handleTestConnection = async () => {
+    setTestStatus({ loading: true });
+    try {
+      const res = await fetch('/api/agents/sign-to-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testConnection: true,
+          customConfig: tempConfig,
+          provider: tempConfig.provider,
+          model: tempConfig.model,
+          apiKey: tempConfig.apiKey,
+          customBaseUrl: tempConfig.customBaseUrl,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'success') {
+        setTestStatus({
+          loading: false,
+          success: true,
+          message: `Connected successfully in ${data.latencyMs}ms! ${tempConfig.model} is operational.`,
+        });
+      } else {
+        setTestStatus({
+          loading: false,
+          success: false,
+          message: data.message || 'Authentication failed. Please verify your API key.',
+        });
+      }
+    } catch (err: any) {
+      setTestStatus({
+        loading: false,
+        success: false,
+        message: err.message || 'Network error during test handshake.',
+      });
+    }
+  };
+
+  const handleTestSynthesis = async () => {
+    setTestSynthesisStatus({ loading: true });
+    try {
+      const res = await fetch('/api/agents/sign-to-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tokens: ['DOCTOR', 'FEVER', 'HELP'],
+          customConfig: tempConfig,
+          provider: tempConfig.provider,
+          model: tempConfig.model,
+          apiKey: tempConfig.apiKey,
+          customBaseUrl: tempConfig.customBaseUrl,
+          speakerMessage: 'How are you feeling today, and what symptoms do you have?',
+          userName: effectiveDisplayNameRef.current || displayName || 'Bhushan',
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.spokenText) {
+        setTestSynthesisStatus({
+          loading: false,
+          success: true,
+          sentence: data.spokenText,
+          message: `Formed in ${data.latencyMs || 160}ms via ${data.modelUsed || tempConfig.model}`,
+        });
+      } else {
+        setTestSynthesisStatus({
+          loading: false,
+          success: false,
+          message: data.error || 'Failed to form sample sentence.',
+        });
+      }
+    } catch (err: any) {
+      setTestSynthesisStatus({
+        loading: false,
+        success: false,
+        message: err.message || 'Network error during synthesis.',
+      });
+    }
+  };
+
+  const [canvasReady, setCanvasReady] = useState<number>(0);
 
   // Extract custom words from user name & meeting context for instant auto-complete
   const customBiographicalWords = React.useMemo(() => {
@@ -1726,6 +1916,8 @@ function MeetingRoomContent() {
     }
 
     const tokens = bufferedSignTokens.map((t) => t.token);
+    const activeSpeakerMessage = lastSpeakerSpeechRef.current || currentSentence || '';
+
     const timer = setTimeout(async () => {
       try {
         const res = await fetch('/api/agents/sign-to-speech', {
@@ -1733,10 +1925,14 @@ function MeetingRoomContent() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             tokens,
-            apiKey: customApiKey || undefined,
-            model: customModel || undefined,
+            customConfig: aiConfigRef.current,
+            provider: aiConfigRef.current?.provider || 'groq',
+            model: aiConfigRef.current?.model || customModel || 'llama-3.3-70b-versatile',
+            apiKey: aiConfigRef.current?.apiKey || customApiKey || undefined,
+            customBaseUrl: aiConfigRef.current?.customBaseUrl || undefined,
+            speakerMessage: activeSpeakerMessage,
             context: meetingContextRef.current || undefined,
-            userName: effectiveDisplayNameRef.current || undefined,
+            userName: effectiveDisplayNameRef.current || displayName || undefined,
           }),
         });
         if (res.ok) {
@@ -1750,10 +1946,10 @@ function MeetingRoomContent() {
         const deduped = joined.replace(/\b(\w+)(?:\s+\1\b)+/gi, '$1');
         setLivePredictedSentence(deduped.charAt(0).toUpperCase() + deduped.slice(1).toLowerCase() + '.');
       }
-    }, 280);
+    }, 180);
 
     return () => clearTimeout(timer);
-  }, [bufferedSignTokens, customApiKey, customModel]);
+  }, [bufferedSignTokens, aiConfig, customApiKey, customModel]);
 
   // Auto-Speak on Gesture Pause: Automatically broadcasts spoken voice to remote hearing speaker
   useEffect(() => {
@@ -2462,11 +2658,17 @@ function MeetingRoomContent() {
     // Real-time live transcript streaming from remote speaker (Google Meet live subtitles)
     socket.on('live-transcript', (data: { transcript: string }) => {
       setInterimTranscript(data.transcript || '');
+      if (data.transcript && data.transcript.trim().length > 3) {
+        lastSpeakerSpeechRef.current = data.transcript.trim();
+      }
     });
 
     // Remote Sign & Speech Broadcast: When speaking peer speaks, render locally at 60 FPS
     socket.on('sign-speech-event', (data: { sentence: string; pipelineResult: SpeechToSignPipelineResult }) => {
       console.log('[Socket.IO] Received sign-speech-event:', data.sentence);
+      if (data.sentence && data.sentence.trim()) {
+        lastSpeakerSpeechRef.current = data.sentence.trim();
+      }
       setShowSignCompanion(true);
       setAvatarMode('hologram');
       setInterimTranscript('');
@@ -3154,6 +3356,7 @@ function MeetingRoomContent() {
 
     setIsSpeakingSign(true);
     let spokenSentence = '';
+    const activeSpeakerMessage = lastSpeakerSpeechRef.current || currentSentence || '';
 
     try {
       const res = await fetch('/api/agents/sign-to-speech', {
@@ -3161,10 +3364,14 @@ function MeetingRoomContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tokens: tokensToUse,
-          apiKey: customApiKey || undefined,
-          model: customModel || undefined,
+          customConfig: aiConfigRef.current,
+          provider: aiConfigRef.current?.provider || 'groq',
+          model: aiConfigRef.current?.model || customModel || 'llama-3.3-70b-versatile',
+          apiKey: aiConfigRef.current?.apiKey || customApiKey || undefined,
+          customBaseUrl: aiConfigRef.current?.customBaseUrl || undefined,
+          speakerMessage: activeSpeakerMessage,
           context: meetingContextRef.current || undefined,
-          userName: effectiveDisplayNameRef.current || undefined,
+          userName: effectiveDisplayNameRef.current || displayName || undefined,
         }),
       });
       if (res.ok) {
@@ -4716,10 +4923,13 @@ function MeetingRoomContent() {
                   </div>
                   <div>
                     <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                      <span>AI Model &amp; Custom API Key</span>
-                      {customApiKey ? (
+                      <span>AI Engine &amp; API Key</span>
+                      <span className="px-1.5 py-0.2 rounded bg-orange-100 text-orange-800 text-[9px] font-mono font-bold uppercase">
+                        {aiConfig.provider}
+                      </span>
+                      {aiConfig.apiKey ? (
                         <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[9px] font-mono font-bold">
-                          Custom
+                          Custom Key
                         </span>
                       ) : (
                         <span className="px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 text-[9px] font-mono font-bold">
@@ -4728,14 +4938,19 @@ function MeetingRoomContent() {
                       )}
                     </div>
                     <div className="text-[11px] text-slate-500 font-mono">
-                      Active: <strong className="text-slate-800">{customModel}</strong>
+                      Active: <strong className="text-slate-800">{aiConfig.model}</strong>
                     </div>
                   </div>
                 </div>
 
                 <button
                   type="button"
-                  onClick={() => setShowSettingsModal(true)}
+                  onClick={() => {
+                    setTempConfig(aiConfig);
+                    setTestStatus(null);
+                    setTestSynthesisStatus(null);
+                    setShowSettingsModal(true);
+                  }}
                   className="px-3 py-1.5 rounded-xl bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 text-orange-600 font-bold text-xs shadow-xs transition cursor-pointer"
                 >
                   Configure
@@ -4768,16 +4983,17 @@ function MeetingRoomContent() {
 
         {/* AI Key & Model Configuration Modal for Lobby */}
         {showSettingsModal && (
-          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
-            <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-2xl max-w-lg w-full text-slate-900 space-y-5 animate-in zoom-in-95 duration-150">
+          <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+            <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-2xl max-w-lg w-full text-slate-900 space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-150">
+              {/* Header */}
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2.5">
                   <div className="w-10 h-10 rounded-2xl bg-orange-50 border border-orange-200 flex items-center justify-center text-orange-600">
                     <Sliders className="w-5 h-5 text-orange-500" />
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-base text-slate-900 font-heading">AI Model &amp; API Key Settings</h3>
-                    <p className="text-xs text-slate-500">Bring Your Own Key (BYOK) for custom model translation.</p>
+                    <h3 className="font-extrabold text-base text-slate-900 font-heading">AI Engine &amp; API Key Settings</h3>
+                    <p className="text-xs text-slate-500">Groq LPU (Ultra-Fast 70B), Gemini, Claude &amp; OpenAI BYOK</p>
                   </div>
                 </div>
                 <button
@@ -4789,59 +5005,255 @@ function MeetingRoomContent() {
                 </button>
               </div>
 
-              {/* Custom Gemini API Key */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 font-mono flex items-center justify-between">
-                  <span>Google Gemini API Key</span>
-                  <span className="text-[10px] text-slate-400">Stored safely in local browser</span>
-                </label>
-                <input
-                  type="password"
-                  value={customApiKey}
-                  onChange={(e) => setCustomApiKey(e.target.value)}
-                  placeholder="AIzaSy... (Leave blank to use Platform Key)"
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-xs focus:outline-none focus:border-orange-500 focus:bg-white shadow-xs transition"
-                />
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Your custom key will be used for real-time speech-to-ISL and camera sign-to-speech AI sentence synthesis.
-                </p>
-              </div>
-
-              {/* Model Name Selector */}
+              {/* Provider Selector Tabs */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 font-mono">
-                  Select Model Version
+                  Select AI Engine Provider:
                 </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'].map((m) => (
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { id: 'groq', name: 'Groq', badge: 'Ultra-Fast 70B' },
+                    { id: 'gemini', name: 'Gemini', badge: 'Flash 2.0' },
+                    { id: 'claude', name: 'Claude', badge: '3.7 / 3.5' },
+                    { id: 'openai', name: 'OpenAI', badge: 'GPT-4o Mini' },
+                  ].map((p) => (
                     <button
-                      key={m}
+                      key={p.id}
                       type="button"
-                      onClick={() => setCustomModel(m)}
-                      className={`py-2 px-2 rounded-xl text-xs font-mono text-center border transition cursor-pointer ${
-                        customModel === m
-                          ? 'bg-orange-50 border-orange-500 text-orange-950 font-bold shadow-xs'
+                      onClick={() => {
+                        const newProvider = p.id as AIProvider;
+                        const models = PROVIDER_MODELS[newProvider];
+                        setTempConfig({
+                          ...tempConfig,
+                          provider: newProvider,
+                          model: models[0]?.id || '',
+                        });
+                        setTestStatus(null);
+                        setTestSynthesisStatus(null);
+                      }}
+                      className={`p-2.5 rounded-2xl border text-center transition cursor-pointer flex flex-col items-center justify-center ${
+                        tempConfig.provider === p.id
+                          ? 'bg-orange-50 border-2 border-orange-500 text-orange-950 font-bold shadow-xs'
                           : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                       }`}
                     >
-                      {m}
+                      <span className="text-xs font-bold">{p.name}</span>
+                      <span className="text-[9px] text-slate-500 mt-0.5">{p.badge}</span>
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Model Selection */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 font-mono">
+                    Model Identifier ({tempConfig.provider.toUpperCase()})
+                  </label>
+                  <span className="text-[10px] text-slate-500">Pick preset or type custom</span>
+                </div>
                 <input
                   type="text"
-                  value={customModel}
-                  onChange={(e) => setCustomModel(e.target.value)}
-                  placeholder="Or enter custom model name (e.g. gemini-2.5-flash)..."
-                  className="w-full px-4 py-2 mt-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-xs focus:outline-none focus:border-orange-500 focus:bg-white shadow-xs transition"
+                  value={tempConfig.model}
+                  onChange={(e) => {
+                    setTempConfig({ ...tempConfig, model: e.target.value });
+                    setTestStatus(null);
+                    setTestSynthesisStatus(null);
+                  }}
+                  placeholder="e.g. llama-3.3-70b-versatile"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-orange-500 transition shadow-xs"
                 />
+                {/* Presets */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  <span className="text-[10px] font-semibold text-slate-500">Presets:</span>
+                  {PROVIDER_MODELS[tempConfig.provider]?.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => {
+                        setTempConfig({ ...tempConfig, model: m.id });
+                        setTestStatus(null);
+                        setTestSynthesisStatus(null);
+                      }}
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                        tempConfig.model === m.id
+                          ? 'bg-orange-500 text-white border-orange-500'
+                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {m.shortName || m.id}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom API Key Input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 font-mono">
+                    {tempConfig.provider.toUpperCase()} API Key
+                  </label>
+                  <span className="text-[10px] text-slate-400">Stored locally in browser</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showApiKey ? 'text' : 'password'}
+                    value={tempConfig.apiKey}
+                    onChange={(e) => {
+                      setTempConfig({ ...tempConfig, apiKey: e.target.value });
+                      setTestStatus(null);
+                      setTestSynthesisStatus(null);
+                    }}
+                    placeholder={
+                      tempConfig.provider === 'groq'
+                        ? 'gsk_... (Leave blank to use default Groq key)'
+                        : tempConfig.provider === 'claude'
+                          ? 'sk-ant-api03-...'
+                          : tempConfig.provider === 'openai'
+                            ? 'sk-proj-...'
+                            : 'AIzaSy... (Leave blank to use default key)'
+                    }
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 pr-10 text-xs text-slate-900 font-mono placeholder-slate-400 focus:outline-none focus:border-orange-500 shadow-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                  >
+                    {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  {tempConfig.provider === 'groq'
+                    ? 'Default platform Groq key (Llama 3.3 70B, 14,400 free req/day) is active if blank.'
+                    : 'Enter your personal API key to bypass limits during live demonstrations.'}
+                </p>
+              </div>
+
+              {/* Advanced Endpoint Option */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <span>Advanced: Custom API Endpoint / Proxy (Optional)</span>
+                  {showAdvanced ? <ChevronUp className="w-3.5 h-3.5 text-slate-500" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-500" />}
+                </button>
+                {showAdvanced && (
+                  <div className="p-3 bg-white border-t border-slate-200 space-y-1">
+                    <input
+                      type="text"
+                      value={tempConfig.customBaseUrl || ''}
+                      onChange={(e) => setTempConfig({ ...tempConfig, customBaseUrl: e.target.value })}
+                      placeholder="https://api.groq.com/openai/v1/chat/completions"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      Useful for custom gateways, LiteLLM, or reverse proxies.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Test Results Display */}
+              {testStatus && (
+                <div
+                  className={`p-3 rounded-2xl border text-xs flex items-start gap-2.5 animate-in fade-in duration-150 ${
+                    testStatus.loading
+                      ? 'bg-slate-50 border-slate-200 text-slate-700'
+                      : testStatus.success
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                        : 'bg-rose-50 border-rose-300 text-rose-950'
+                  }`}
+                >
+                  {testStatus.loading ? (
+                    <RotateCcw className="w-4 h-4 text-orange-500 animate-spin shrink-0 mt-0.5" />
+                  ) : testStatus.success ? (
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1">
+                    <p className="font-bold">
+                      {testStatus.loading
+                        ? `Testing handshake with ${tempConfig.provider.toUpperCase()}...`
+                        : testStatus.success
+                          ? 'Connection Verified!'
+                          : 'Connection Test Failed'}
+                    </p>
+                    {testStatus.message && (
+                      <p className="text-[11px] mt-0.5 opacity-90">{testStatus.message}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Test Synthesis Result Box */}
+              {testSynthesisStatus && (
+                <div
+                  className={`p-3 rounded-2xl border text-xs flex items-start gap-2.5 animate-in fade-in duration-150 ${
+                    testSynthesisStatus.loading
+                      ? 'bg-slate-50 border-slate-200 text-slate-700'
+                      : testSynthesisStatus.success
+                        ? 'bg-indigo-50 border-indigo-300 text-indigo-950'
+                        : 'bg-rose-50 border-rose-300 text-rose-950'
+                  }`}
+                >
+                  {testSynthesisStatus.loading ? (
+                    <RotateCcw className="w-4 h-4 text-indigo-500 animate-spin shrink-0 mt-0.5" />
+                  ) : testSynthesisStatus.success ? (
+                    <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1">
+                    <p className="font-bold">
+                      {testSynthesisStatus.loading
+                        ? `Synthesizing sample signs with ${tempConfig.model}...`
+                        : testSynthesisStatus.success
+                          ? 'Sign-to-Sentence Formation Result'
+                          : 'Synthesis Test Failed'}
+                    </p>
+                    {testSynthesisStatus.sentence && (
+                      <div className="mt-1 p-2 bg-indigo-100/70 rounded-xl border border-indigo-300 font-semibold text-indigo-950 text-[11px]">
+                        &ldquo;{testSynthesisStatus.sentence}&rdquo;
+                      </div>
+                    )}
+                    {testSynthesisStatus.message && (
+                      <p className="text-[10px] mt-1 text-indigo-700 font-mono">{testSynthesisStatus.message}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Diagnostic Ping & Sample Synthesis Test Buttons */}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  disabled={testStatus?.loading}
+                  className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200"
+                >
+                  <Cpu className="w-3.5 h-3.5 text-orange-500" />
+                  <span>Test API Handshake</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTestSynthesis}
+                  disabled={testSynthesisStatus?.loading}
+                  className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200"
+                >
+                  <Wand2 className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Test Sign Sentence</span>
+                </button>
               </div>
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => saveAiSettings(customApiKey, customModel)}
+                  onClick={() => saveAiSettings(tempConfig)}
                   className="flex-1 py-3 px-4 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs transition shadow-md shadow-orange-500/25 flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
@@ -4850,9 +5262,8 @@ function MeetingRoomContent() {
                 <button
                   type="button"
                   onClick={() => {
-                    saveAiSettings('', 'gemini-2.0-flash');
-                    setCustomApiKey('');
-                    setCustomModel('gemini-2.0-flash');
+                    setTempConfig(DEFAULT_AI_CONFIG);
+                    saveAiSettings(DEFAULT_AI_CONFIG);
                   }}
                   className="py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition cursor-pointer"
                 >
@@ -5085,15 +5496,20 @@ function MeetingRoomContent() {
                 <button
                   type="button"
                   onClick={() => {
+                    setTempConfig({ ...aiConfigRef.current });
+                    setTestStatus(null);
+                    setTestSynthesisStatus(null);
                     setShowSettingsModal(true);
                     setShowHeaderMoreMenu(false);
                   }}
                   className="w-full px-3 py-2 rounded-xl hover:bg-slate-800 flex items-center gap-2.5 transition text-left cursor-pointer"
                 >
-                  <Sliders className="w-4 h-4 text-amber-400 shrink-0" />
+                  <Cpu className="w-4 h-4 text-orange-400 shrink-0" />
                   <div className="flex-1">
-                    <div className="font-semibold text-white">Model &amp; API Settings</div>
-                    <div className="text-[10px] text-slate-400">Custom Gemini key &amp; parameters</div>
+                    <div className="font-semibold text-white">Groq AI Engine &amp; BYOK Key</div>
+                    <div className="text-[10px] text-slate-400 font-mono">
+                      {aiConfig.provider.toUpperCase()} &bull; {aiConfig.model}
+                    </div>
                   </div>
                 </button>
               </div>
@@ -6675,13 +7091,18 @@ function MeetingRoomContent() {
 
           {/* 5. AI Key & Settings */}
           <button
-            onClick={() => setShowSettingsModal(true)}
+            onClick={() => {
+              setTempConfig({ ...aiConfigRef.current });
+              setTestStatus(null);
+              setTestSynthesisStatus(null);
+              setShowSettingsModal(true);
+            }}
             className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-              customApiKey
-                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+              aiConfig.provider === 'groq' || aiConfig.apiKey
+                ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40 shadow-xs'
                 : 'bg-[#3c4043] hover:bg-[#474a4e] text-white'
             }`}
-            title={customApiKey ? `Custom Model Active (${customModel})` : 'AI Settings & API Key'}
+            title={`AI Engine: ${aiConfig.provider.toUpperCase()} (${aiConfig.model}) &bull; Click to enter API Key or switch Provider`}
           >
             <Sliders className="w-4 h-4" />
           </button>
@@ -6831,15 +7252,16 @@ function MeetingRoomContent() {
       {/* ─── 5b. Custom AI Key & Model Settings Modal (BYOK) ────────────────── */}
       {showSettingsModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150 pointer-events-auto">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-lg w-full text-white space-y-5">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-lg w-full text-white space-y-4 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-orange-500/20 border border-orange-500/30 flex items-center justify-center">
+                <div className="w-9 h-9 rounded-xl bg-orange-500/20 border border-orange-500/30 flex items-center justify-center text-orange-400">
                   <Sliders className="w-5 h-5 text-orange-400" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-white">AI Model &amp; API Key Settings</h3>
-                  <p className="text-xs text-slate-400">Bring Your Own Key (BYOK) for customized inference.</p>
+                  <h3 className="font-bold text-base text-white">AI Engine &amp; API Key Settings</h3>
+                  <p className="text-xs text-slate-400">Groq Llama 3.3 70B &bull; Bring Your Own Key (BYOK)</p>
                 </div>
               </div>
               <button
@@ -6851,74 +7273,269 @@ function MeetingRoomContent() {
               </button>
             </div>
 
-            {/* Custom Gemini API Key */}
+            {/* Provider Selector Tabs */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300 font-mono flex items-center justify-between">
-                <span>Google Gemini API Key</span>
-                <span className="text-[10px] text-slate-500">Stored safely in browser</span>
+              <label className="text-xs font-bold text-slate-300 font-mono">
+                Select AI Engine Provider:
               </label>
-              <input
-                type="password"
-                value={customApiKey}
-                onChange={(e) => setCustomApiKey(e.target.value)}
-                placeholder="AIzaSy... (Leave blank to use Platform Key)"
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:outline-none focus:border-orange-500 transition"
-              />
-              <p className="text-[10px] text-slate-400 leading-relaxed">
-                If provided, your personal Gemini API key will be used for Speech-to-ISL grammar translation and Sign-to-Speech fluent reconstruction.
-              </p>
-            </div>
-
-            {/* Model Name Selector */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300 font-mono">
-                Model Name / Version
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'].map((m) => (
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { id: 'groq', name: 'Groq', badge: 'Ultra-Fast 70B' },
+                  { id: 'gemini', name: 'Gemini', badge: 'Flash 2.0' },
+                  { id: 'claude', name: 'Claude', badge: '3.7 / 3.5' },
+                  { id: 'openai', name: 'OpenAI', badge: 'GPT-4o Mini' },
+                ].map((p) => (
                   <button
-                    key={m}
+                    key={p.id}
                     type="button"
-                    onClick={() => setCustomModel(m)}
-                    className={`py-2 px-2 rounded-xl text-xs font-mono text-center border transition cursor-pointer ${
-                      customModel === m
-                        ? 'bg-orange-500/20 border-orange-500 text-orange-300 font-bold'
+                    onClick={() => {
+                      const newProvider = p.id as AIProvider;
+                      const models = PROVIDER_MODELS[newProvider];
+                      setTempConfig({
+                        ...tempConfig,
+                        provider: newProvider,
+                        model: models[0]?.id || '',
+                      });
+                      setTestStatus(null);
+                      setTestSynthesisStatus(null);
+                    }}
+                    className={`p-2.5 rounded-2xl border text-center transition cursor-pointer flex flex-col items-center justify-center ${
+                      tempConfig.provider === p.id
+                        ? 'bg-orange-500/20 border-orange-500 text-orange-300 font-black shadow-md'
                         : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
                     }`}
                   >
-                    {m}
+                    <span className="text-xs font-black">{p.name}</span>
+                    <span className="text-[9px] text-slate-500 mt-0.5">{p.badge}</span>
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Model Selection */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-300 font-mono">
+                  Model Identifier ({tempConfig.provider.toUpperCase()})
+                </label>
+                <span className="text-[10px] text-slate-500">Pick preset or type custom</span>
+              </div>
               <input
                 type="text"
-                value={customModel}
-                onChange={(e) => setCustomModel(e.target.value)}
-                placeholder="Or custom model string..."
-                className="w-full px-4 py-2 mt-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:outline-none focus:border-orange-500 transition"
+                value={tempConfig.model}
+                onChange={(e) => {
+                  setTempConfig({ ...tempConfig, model: e.target.value });
+                  setTestStatus(null);
+                  setTestSynthesisStatus(null);
+                }}
+                placeholder="e.g. llama-3.3-70b-versatile"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-orange-500 transition"
               />
+              {/* Presets */}
+              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                <span className="text-[10px] font-semibold text-slate-400">Presets:</span>
+                {PROVIDER_MODELS[tempConfig.provider]?.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => {
+                      setTempConfig({ ...tempConfig, model: m.id });
+                      setTestStatus(null);
+                      setTestSynthesisStatus(null);
+                    }}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                      tempConfig.model === m.id
+                        ? 'bg-orange-500 text-white border-orange-500'
+                        : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                    }`}
+                  >
+                    {m.shortName || m.id}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom API Key Input */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-300 font-mono">
+                  {tempConfig.provider.toUpperCase()} API Key
+                </label>
+                <span className="text-[10px] text-slate-500">Stored in browser localStorage</span>
+              </div>
+              <div className="relative">
+                <input
+                  type={showApiKey ? 'text' : 'password'}
+                  value={tempConfig.apiKey}
+                  onChange={(e) => {
+                    setTempConfig({ ...tempConfig, apiKey: e.target.value });
+                    setTestStatus(null);
+                    setTestSynthesisStatus(null);
+                  }}
+                  placeholder={
+                    tempConfig.provider === 'groq'
+                      ? 'gsk_... (Leave blank to use default Groq key)'
+                      : tempConfig.provider === 'claude'
+                        ? 'sk-ant-api03-...'
+                        : tempConfig.provider === 'openai'
+                          ? 'sk-proj-...'
+                          : 'AIzaSy... (Leave blank to use default key)'
+                  }
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 pr-10 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-orange-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1 rounded-lg"
+                >
+                  {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400 leading-relaxed">
+                {tempConfig.provider === 'groq'
+                  ? 'Default platform Groq key (Llama 3.3 70B, 14,400 free req/day) is active if blank.'
+                  : 'Enter your personal API key to bypass all rate limits during demonstrations.'}
+              </p>
+            </div>
+
+            {/* Advanced Endpoint Option */}
+            <div className="border border-slate-800 rounded-xl overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] font-bold text-slate-400 bg-slate-950 hover:bg-slate-800/80 transition cursor-pointer"
+              >
+                <span>Advanced: Custom API Endpoint / Proxy (Optional)</span>
+                {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+              {showAdvanced && (
+                <div className="p-3 bg-slate-900 border-t border-slate-800 space-y-1">
+                  <input
+                    type="text"
+                    value={tempConfig.customBaseUrl || ''}
+                    onChange={(e) => setTempConfig({ ...tempConfig, customBaseUrl: e.target.value })}
+                    placeholder="https://api.groq.com/openai/v1/chat/completions"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-orange-500"
+                  />
+                  <p className="text-[10px] text-slate-500">
+                    Useful for enterprise custom gateways, LiteLLM, or reverse proxies.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Test Results Display */}
+            {testStatus && (
+              <div
+                className={`p-3 rounded-2xl border text-xs flex items-start gap-2.5 animate-in fade-in duration-150 ${
+                  testStatus.loading
+                    ? 'bg-slate-950 border-slate-800 text-slate-300'
+                    : testStatus.success
+                      ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-200'
+                      : 'bg-rose-950/60 border-rose-500/50 text-rose-200'
+                }`}
+              >
+                {testStatus.loading ? (
+                  <RotateCcw className="w-4 h-4 text-orange-400 animate-spin shrink-0 mt-0.5" />
+                ) : testStatus.success ? (
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1">
+                  <p className="font-bold">
+                    {testStatus.loading
+                      ? `Testing handshake with ${tempConfig.provider.toUpperCase()}...`
+                      : testStatus.success
+                        ? 'Connection Verified!'
+                        : 'Connection Test Failed'}
+                  </p>
+                  {testStatus.message && (
+                    <p className="text-[11px] mt-0.5 opacity-90">{testStatus.message}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Test Synthesis Result Box */}
+            {testSynthesisStatus && (
+              <div
+                className={`p-3 rounded-2xl border text-xs flex items-start gap-2.5 animate-in fade-in duration-150 ${
+                  testSynthesisStatus.loading
+                    ? 'bg-slate-950 border-slate-800 text-slate-300'
+                    : testSynthesisStatus.success
+                      ? 'bg-indigo-950/60 border-indigo-500/50 text-indigo-200'
+                      : 'bg-rose-950/60 border-rose-500/50 text-rose-200'
+                }`}
+              >
+                {testSynthesisStatus.loading ? (
+                  <RotateCcw className="w-4 h-4 text-indigo-400 animate-spin shrink-0 mt-0.5" />
+                ) : testSynthesisStatus.success ? (
+                  <Check className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1">
+                  <p className="font-bold">
+                    {testSynthesisStatus.loading
+                      ? `Synthesizing sample signs with ${tempConfig.model}...`
+                      : testSynthesisStatus.success
+                        ? 'Sign-to-Sentence Formation Result'
+                        : 'Synthesis Test Failed'}
+                  </p>
+                  {testSynthesisStatus.sentence && (
+                    <div className="mt-1 p-2 bg-slate-950 rounded-xl border border-indigo-500/30 font-semibold text-white text-[11px]">
+                      &ldquo;{testSynthesisStatus.sentence}&rdquo;
+                    </div>
+                  )}
+                  {testSynthesisStatus.message && (
+                    <p className="text-[10px] mt-1 text-indigo-300 font-mono">{testSynthesisStatus.message}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Diagnostic Ping & Sample Synthesis Test Buttons */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleTestConnection}
+                disabled={testStatus?.loading}
+                className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer border border-slate-700"
+              >
+                <Cpu className="w-3.5 h-3.5 text-orange-400" />
+                <span>Test API Handshake</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleTestSynthesis}
+                disabled={testSynthesisStatus?.loading}
+                className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer border border-slate-700"
+              >
+                <Wand2 className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Test Sign Sentence</span>
+              </button>
             </div>
 
             {/* Action Buttons */}
             <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
               <button
                 type="button"
-                onClick={() => saveAiSettings(customApiKey, customModel)}
+                onClick={() => saveAiSettings(tempConfig)}
                 className="flex-1 py-3 px-4 rounded-xl bg-orange-500 hover:bg-orange-400 text-white font-bold text-xs transition shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Check className="w-4 h-4" />
-                <span>Save &amp; Apply Settings</span>
+                <span>Save &amp; Apply to Meeting</span>
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  saveAiSettings('', 'gemini-2.0-flash');
-                  setCustomApiKey('');
-                  setCustomModel('gemini-2.0-flash');
+                  setTempConfig(DEFAULT_AI_CONFIG);
+                  saveAiSettings(DEFAULT_AI_CONFIG);
                 }}
                 className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
               >
-                Reset to Default
+                Reset Default
               </button>
             </div>
           </div>

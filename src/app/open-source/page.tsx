@@ -717,40 +717,40 @@ export default function OpenSourceLandmarkDatasetPage() {
             </p>
           </div>
 
-          {/* Mode Switcher Tabs */}
-          <div className="flex items-center bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shrink-0 text-xs font-heading font-bold shadow-inner flex-wrap gap-1">
+          {/* Mode Switcher Tabs (Fully Responsive for Mobile & Desktop) */}
+          <div className="w-full md:w-auto grid grid-cols-1 sm:grid-cols-3 md:flex items-center bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shrink-0 text-xs font-heading font-bold shadow-inner gap-1">
             <button
               onClick={() => setActiveTab('record')}
-              className={`px-4 py-2.5 rounded-xl transition flex items-center gap-2 cursor-pointer ${
+              className={`w-full md:w-auto justify-center px-3.5 py-2.5 rounded-xl transition flex items-center gap-2 cursor-pointer ${
                 activeTab === 'record'
                   ? 'bg-white text-orange-600 shadow-sm border border-slate-200/60'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Camera className="w-4 h-4 text-orange-500" />
-              <span>1. Record Sign Landmark</span>
+              <span>1. Record Sign</span>
             </button>
             <button
               onClick={() => setActiveTab('test')}
-              className={`px-4 py-2.5 rounded-xl transition flex items-center gap-2 cursor-pointer ${
+              className={`w-full md:w-auto justify-center px-3.5 py-2.5 rounded-xl transition flex items-center gap-2 cursor-pointer ${
                 activeTab === 'test'
                   ? 'bg-white text-emerald-600 shadow-sm border border-slate-200/60'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Activity className="w-4 h-4 text-emerald-500" />
-              <span>2. Test Custom Signs</span>
+              <span>2. Test Signs</span>
             </button>
             <button
               onClick={() => setActiveTab('library')}
-              className={`px-4 py-2.5 rounded-xl transition flex items-center gap-2 cursor-pointer ${
+              className={`w-full md:w-auto justify-center px-3.5 py-2.5 rounded-xl transition flex items-center gap-2 cursor-pointer ${
                 activeTab === 'library'
                   ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/60'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <FolderHeart className="w-4 h-4 text-indigo-500" />
-              <span>3. My Custom Library ({savedSigns.length})</span>
+              <span>3. Library ({savedSigns.length})</span>
             </button>
           </div>
         </div>
@@ -957,8 +957,8 @@ export default function OpenSourceLandmarkDatasetPage() {
                   </span>
                 </div>
 
-                {/* Video + Canvas Stage */}
-                <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-slate-950 border border-slate-200 shadow-inner flex items-center justify-center">
+                {/* Video + Canvas Stage (Responsive aspect-[4/3] on phones for generous hand room, aspect-video on desktop) */}
+                <div className="relative aspect-[4/3] sm:aspect-video w-full rounded-2xl overflow-hidden bg-slate-950 border border-slate-200 shadow-inner flex items-center justify-center">
                   
                   {/* User Camera Feed */}
                   <video
@@ -1040,8 +1040,8 @@ export default function OpenSourceLandmarkDatasetPage() {
                     </div>
                   )}
 
-                  {/* Landmark Node Colors Legend */}
-                  <div className="absolute bottom-3 left-3 bg-slate-900/85 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-mono text-white flex items-center gap-3 shadow-md z-10">
+                  {/* Landmark Node Colors Legend (Visible on tablets and desktop, hidden on tiny phone screens to keep camera uncluttered) */}
+                  <div className="hidden sm:flex absolute bottom-3 left-3 bg-slate-900/85 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-mono text-white items-center gap-3 shadow-md z-10">
                     <div className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-[#f59e0b]" />
                       <span>Fingertips (5)</span>
@@ -1255,7 +1255,7 @@ export default function OpenSourceLandmarkDatasetPage() {
                           </span>
                           <span className="font-mono font-bold text-orange-600 text-[11px]">{recordingDuration} seconds</span>
                         </div>
-                        <div className="grid grid-cols-6 gap-1.5">
+                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
                           {[3, 4, 5, 6, 8, 10].map((sec) => (
                             <button
                               key={sec}

@@ -40,15 +40,15 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://sanket-ai.onrender.com'),
   title: 'Sanket AI - Accessible Video Meeting Platform',
   description: 'AI-powered live video meeting platform with on-device Indian Sign Language recognition, real-time speech subtitles, and 3D interpreter avatar.',
-  manifest: '/manifest.json?v=3',
+  manifest: '/manifest.json',
   icons: {
     icon: [
-      { url: '/icons/icon.svg?v=3', type: 'image/svg+xml' },
-      { url: '/icons/icon-192x192.png?v=3', sizes: '192x192', type: 'image/png' },
-      { url: '/icons/icon-512x512.png?v=3', sizes: '512x512', type: 'image/png' },
+      { url: '/icons/icon.svg', type: 'image/svg+xml' },
+      { url: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512x512.png', sizes: '512x512', type: 'image/png' },
     ],
     apple: [
-      { url: '/icons/apple-touch-icon.png?v=3', sizes: '180x180', type: 'image/png' },
+      { url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
     ],
   },
   openGraph: {
@@ -95,13 +95,30 @@ export default function RootLayout({
   return (
     <html lang="en" data-scroll-behavior="smooth" className={`${plusJakartaSans.variable} ${inter.variable} ${dancingScript.variable}`}>
       <head>
-        <link rel="manifest" href="/manifest.json?v=2" />
-        <link rel="icon" href="/icons/icon.svg?v=2" type="image/svg+xml" />
-        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=2" />
+        <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Sanket AI" />
+        {/* Early PWA install event capturer: Prevents missing beforeinstallprompt on Android/Chromium */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.__pwaInstallPrompt = null;
+              window.addEventListener('beforeinstallprompt', function(e) {
+                e.preventDefault();
+                window.__pwaInstallPrompt = e;
+                window.dispatchEvent(new CustomEvent('pwa-prompt-available'));
+              });
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').catch(function(){});
+                });
+              }
+            `,
+          }}
+        />
       </head>
       <body className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans antialiased">
         <AuthProvider>

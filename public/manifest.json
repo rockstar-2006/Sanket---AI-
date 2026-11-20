@@ -1,9 +1,9 @@
 {
-  "id": "/?source=pwa&v=3",
+  "id": "/",
   "name": "Sanket AI - Accessible Video Meetings",
   "short_name": "Sanket AI",
   "description": "AI-powered accessible video meetings with on-device Indian Sign Language translation and 3D avatar.",
-  "start_url": "/?source=pwa&v=3",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
   "display_override": [
@@ -23,22 +23,34 @@
   ],
   "icons": [
     {
-      "src": "/icons/icon.svg?v=3",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-512x512.png?v=3",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-192x192.png?v=3",
+      "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ],
   "shortcuts": [
@@ -50,7 +62,8 @@
       "icons": [
         {
           "src": "/icons/icon-192x192.png",
-          "sizes": "192x192"
+          "sizes": "192x192",
+          "type": "image/png"
         }
       ]
     },
@@ -62,19 +75,21 @@
       "icons": [
         {
           "src": "/icons/icon-192x192.png",
-          "sizes": "192x192"
+          "sizes": "192x192",
+          "type": "image/png"
         }
       ]
     },
     {
-      "name": "3D Sign Studio",
+      "name": "Open Source Studio",
       "short_name": "Studio",
-      "description": "Open the 3D Signing Avatar testing studio",
-      "url": "/test-avatar?source=pwa_shortcut",
+      "description": "Record and test custom Indian Sign Language gestures",
+      "url": "/open-source?source=pwa_shortcut",
       "icons": [
         {
           "src": "/icons/icon-192x192.png",
-          "sizes": "192x192"
+          "sizes": "192x192",
+          "type": "image/png"
         }
       ]
     }
